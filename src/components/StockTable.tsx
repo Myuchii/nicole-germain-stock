@@ -1,6 +1,7 @@
-// components/StockTable.tsx
 'use client'
 import { Fabric } from '@prisma/client'
+import { Trash2 } from 'lucide-react' // Ne pas oublier !
+import { deleteFabric } from '@/app/_actions/fabric-actions' // L'action qu'on a créée
 
 interface StockTableProps {
   fabrics: Fabric[]
@@ -23,11 +24,11 @@ export default function StockTable({ fabrics }: StockTableProps) {
               <th className="px-6 py-4 font-semibold">Tissu</th>
               <th className="px-6 py-4 font-semibold">Quantité</th>
               <th className="px-6 py-4 font-semibold text-center">Alerte</th>
+              <th className="px-6 py-4 font-semibold text-right italic">Actions</th> {/* En-tête pour la poubelle */}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {fabrics.map((fabric) => {
-              // Logique d'alerte selon l'unité
               const isLow = fabric.unit === 'METER' 
                 ? Number(fabric.stockMeters) <= Number(fabric.alertThresholdMeters)
                 : (fabric.stockUnits || 0) <= (fabric.alertThresholdUnits || 0);
@@ -54,6 +55,18 @@ export default function StockTable({ fabrics }: StockTableProps) {
                         OK
                       </span>
                     )}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button 
+                      onClick={async () => { 
+                        if(confirm("Supprimer ce tissu définitivement ?")) {
+                          await deleteFabric(fabric.id); 
+                        }
+                      }}
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                    >
+                      <Trash2 size={18} />
+                    </button>
                   </td>
                 </tr>
               )

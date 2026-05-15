@@ -1,0 +1,157 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+}
+
+model Fabric {
+  id                    String          @id @default(cuid())
+  reference             String          @unique
+  name                  String
+  color                 String
+  unit                  UnitType
+  width                 Float?          @default(0)
+  stockMeters           Float?          @default(0)
+  stockUnits            Int?            @default(0)
+  alertThresholdMeters  Float?          
+  alertThresholdUnits   Int?
+  pricePerMeter         Float           @default(0)
+  pricePerUnit          Float           @default(0)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  stockMovements        StockMovement[]
+  quotes                Quote[]
+  quoteItems            QuoteItem[]
+}
+
+model Quote {
+  id          String      @id @default(cuid())
+  reference   String      @unique @default(cuid())
+  status      QuoteStatus @default(DRAFT)
+  totalPrice  Float       @default(0)
+  quantity    Float       @default(0) // On l'ajoute pour corriger ton erreur d'action
+  createdAt   DateTime    @default(now())
+  validatedAt DateTime?
+
+  items       QuoteItem[]
+  userId      String?
+  user        User?       @relation(fields: [userId], references: [id])
+  fabricId    String
+  fabric      Fabric      @relation(fields: [fabricId], references: [id])
+}
+
+model StockMovement {
+  id             String       @id @default(cuid())
+  fabricId       String
+  type           MovementType
+  quantityMeters Float?       // Changé Decimal -> Float
+  quantityUnits  Int?
+  reason         String
+  createdAt      DateTime     @default(now())
+
+  fabric Fabric @relation(fields: [fabricId], references: [id])
+}
+
+model QuoteItem {
+  id              String   @id @default(cuid())
+  quoteId         String
+  fabricId        String
+  quantityMeters  Float?   // Changé Decimal -> Float
+  quantityUnits   Int?
+  prodTimeMinutes Int
+  costPerMinute   Float    // Changé Decimal -> Float
+  sellingPrice    Float    // Changé Decimal -> Float
+
+  quote  Quote  @relation(fields: [quoteId], references: [id])
+  fabric Fabric @relation(fields: [fabricId], references: [id])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now())
+
+  quotes Quote[]
+  accounts Account[]
+  sessions Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum UnitType {
+  METER
+  UNIT
+}
+
+enum MovementType {
+  ENTRY
+  EXIT
+}
+
+enum QuoteStatus {
+  DRAFT
+  VALIDATED
+  CANCELLED
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model Range {
+  id            String   @id @default(cuid())
+  name          String   // ex: "Monaco", "Antibes"
+  isBicolor     Boolean  @default(false)
+  pricePremium  Float    @default(0) // Supplément de prix
+}
+
+model ProductType {
+  id            String   @id @default(cuid())
+  name          String   // ex: "Housse de couette"
+  family        String   // "FLAT", "FITTED", "ENVELOPE"
+  baseLaborTime Int      // Temps en minutes
+}
