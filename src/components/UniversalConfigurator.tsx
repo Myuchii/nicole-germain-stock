@@ -36,9 +36,9 @@ export default function UniversalConfigurator({ fabrics }: { fabrics: Fabric[] }
   const results = products.map(product => {
     const fabric = fabrics.find(f => f.id === product.fabricId)
     return calculateNGProduction(
-      product.family as any,
-      product.range,
-      product.dims,
+       product.family as 'FITTED' | 'ENVELOPE' | 'FLAT' | 'BOLSTER' | 'ROUND',
+       product.range as 'BASIQUE' | 'MONACO' | 'TPR' | 'TR',
+       product.dims,
       { 
         mainPrice: Number(fabric?.pricePerMeter || 0),
         laize: Number(fabric?.width || 300)

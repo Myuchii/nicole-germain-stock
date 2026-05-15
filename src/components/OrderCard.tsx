@@ -9,10 +9,11 @@ interface Order {
   reference: string
   totalPrice: number
   quantity: number
-  validatedAt: string
+  validatedAt: Date | null  // ← CORRIGÉ
   items: Array<{
     id: string
     fabric: {
+      id: string
       reference: string
       name: string
     }
@@ -72,7 +73,7 @@ export function OrderCard({ order }: { order: Order }) {
             {order.reference}
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Validée le {new Date(order.validatedAt).toLocaleDateString('fr-FR')}
+            Validée le {order.validatedAt ? new Date(order.validatedAt).toLocaleDateString('fr-FR') : 'N/A'}
           </p>
         </div>
         <div className="text-right ml-4">

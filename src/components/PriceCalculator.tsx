@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { Fabric } from '@prisma/client'
-import { createQuote } from '@/app/_actions/quote-actions'
+import { createQuoteFromCalculator } from '@/app/_actions/quote-actions'
 
 interface PriceCalculatorProps {
   fabrics: Fabric[]
@@ -32,7 +32,7 @@ export default function PriceCalculator({ fabrics }: PriceCalculatorProps) {
     if (!selectedId) return alert("Choisis un tissu d'abord ! 🧵")
     
     try {
-      await createQuote({
+      await createQuoteFromCalculator({
         fabricId: selectedId,
         quantity: qty,
         totalPrice: pv

@@ -1,9 +1,18 @@
-import { ProductFamily } from './types' // ton type
+// Types pour le moteur
+type ProductFamily = 'FITTED' | 'ENVELOPE' | 'FLAT' | 'BOLSTER' | 'ROUND'
+type ProductRange = 'BASIQUE' | 'MONACO' | 'TPR' | 'TR'
+
+interface Dimensions {
+  L: number
+  l: number
+  bonnet?: number
+  diametre?: number
+}
 
 export function calculateNGProduction(
   family: ProductFamily,
-  range: string,
-  dimensions: { L: number; l: number; bonnet?: number; diametre?: number },
+  range: ProductRange,  // ← FIX : ProductRange au lieu de string
+  dimensions: Dimensions,
   fabrics: { mainPrice: number; secondaryPrice?: number; laize: number },
   costPerMinute: number = 0.75,
   debug = false
@@ -94,12 +103,13 @@ const getOptimizedLinearMeters = (lengthCm: number, widthCm: number) => {
       const d = (dimensions.diametre || 200) + 20;
       linearNeeded = d / 100;
       labor = 60;
+      opt = { meters: linearNeeded, needsAssembly: false };
       break;
     }
   }
 
-  linearNeeded = opt.meters;
-  labor = opt.needsAssembly ? labor + 25 : labor; // + assemblage
+  linearNeeded = opt.meters ?? 0;
+  labor = opt.needsAssembly ?? false ? labor + 25 : labor; // + assemblage
 
   // Bicolore
   const isBicolor = ['MONACO'].includes(range);

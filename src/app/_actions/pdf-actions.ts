@@ -1,58 +1,72 @@
 'use server'
-import { jsPDF } from 'jspdf'
-import 'jspdf-autotable'
-import { Product } from '@/types'
 
-export async function generateQuotePDF(data: {
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+
+interface Product {
+  family: string
+  range: string
+  fabric: {
+    reference: string
+    name: string
+    pricePerMeter: number
+  }
+  dims: {
+    L: number
+    l: number
+    bonnet?: number
+    diametre?: number
+  }
+  mainFabricMeters: number
+  laborMinutes: number
+  totalPriceHT: number
+}
+
+interface QuotePDFData {
+  id: string
+  reference: string
+  totalPrice: number
   products: Product[]
-  fabrics: Fabric[]
-  total: any
-}) {
-  const doc = new jsPDF()
-  
-  // Header
-  doc.setFontSize(20)
-  doc.text('ATELIER NICOLE GERMAIN', 20, 25)
+}
+
+export async function generateQuotePDF(data: QuotePDFData): Promise<Blob> {
+  const doc = new jsPDF('p', 'mm', 'a4')
+
+  doc.setFontSize(24)
+  doc.text('ATELIER NICOLE GERMAIN', 105, 25, { align: 'center' })
+  doc.setFontSize(14)
+  doc.text('DEVIS CONFECTION SUR MESURE', 105, 40, { align: 'center' })
   doc.setFontSize(12)
-  doc.text('DEVIS COUTURE SUR MESURE', 20, 35)
-  
-  // Tableau produits
-  const tableData = data.products.map((p, i) => {
-    const fabric = data.fabrics[i]
-    const res = calculateNGProduction(p.family, p.range, p.dims, {
-      mainPrice: fabric.pricePerMeter,
-      laize: fabric.width || 300
-    })
-    
-    return [
-      `${p.family} ${p.range}`,
-      `${fabric.reference}`,
-      `${p.dims.L}×${p.dims.l}cm`,
-      `${res.mainFabricMeters.toFixed(2)}m`,
-      `${res.laborMinutes}min`,
-      `${res.totalPriceHT.toFixed(2)}€`
-    ]
-  })
-  
-  doc.autoTable({
-    head: [['Produit', 'Tissu', 'Dimensions', 'Métrage', 'Temps', 'Prix HT']],
+  doc.text(`Réf: ${data.reference}`, 20, 55)
+  doc.text(`Date: ${new Date().toLocaleDateString('fr-FR')}`, 20, 62)
+
+  doc.setLineWidth(3)
+  doc.setDrawColor(99, 102, 241)
+  doc.line(20, 72, 190, 72)
+
+  const tableData = data.products.map((product, index) => [
+    `${index + 1}`,
+    `${product.family} ${product.range}`,
+    `${product.fabric.reference} - ${product.fabric.name}`,
+    `${product.dims.L}×${product.dims.l}${product.dims.bonnet ? ` (B${product.dims.bonnet})` : ''}`,
+    `${product.mainFabricMeters.toFixed(2)}m`,
+    `${product.laborMinutes}min`,
+    `${product.totalPriceHT.toFixed(2)}€`
+  ])
+
+  autoTable(doc, {
+    startY: 80,
+    head: [['#', 'PRODUIT', 'TISSU', 'DIMENSIONS', 'MÉTRAGE', 'COUTURE', 'PRIX HT']],
     body: tableData,
-    startY: 50,
     theme: 'grid',
-    headStyles: { fillColor: [79, 70, 229] }
+    headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: 'bold' },
+    columnStyles: { 0: { halign: 'center' }, 6: { halign: 'right', fontStyle: 'bold' } }
   })
-  
-  // Total
-  const finalY = doc.lastAutoTable.finalY + 20
-  doc.setFontSize(16)
-  doc.text(`TOTAL HT : ${data.total.totalPriceHT.toFixed(2)} €`, 170, finalY, { align: 'right' })
-  
-  // Footer
+
+  const pageHeight = doc.internal.pageSize.height
   doc.setFontSize(10)
-  doc.text('Validité 30 jours - TVA 20%', 20, doc.internal.pageSize.height - 20)
-  
-  // DOWNLOAD
-  doc.save(`devis-${Date.now()}.pdf`)
-  
-  return true
+  doc.setFont('helvetica', 'italic')
+  doc.text('Validité 30 jours - TVA non applicable art. 293B', 105, pageHeight - 20, { align: 'center' })
+
+  return doc.output('blob')
 }

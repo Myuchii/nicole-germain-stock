@@ -2,7 +2,7 @@
 import { PrismaClient } from '@prisma/client'
 import UniversalConfigurator from '@/components/UniversalConfigurator' // Ton nouveau moteur
 import { FileText, History, Check, Trash2 } from 'lucide-react'
-import { createQuote, validateQuote, deleteQuote } from '@/app/_actions/quote-actions' // On va les créer
+import { createQuoteFromCalculator, validateQuote, deleteQuote } from '@/app/_actions/quote-actions' // On va les créer
 
 const prisma = new PrismaClient()
 
