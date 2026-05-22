@@ -58,10 +58,29 @@ export async function createOrUpdateFabric(formData: FormData) {
 }
 
 export async function deleteFabric(id: string) {
-  // Pas de "new PrismaClient()", on utilise l'import global
-  await prisma.fabric.delete({
-    where: { id }
-  })
+  try {
+    // 1. On vérifie s'il y a des commandes liées
+    const isUsed = await prisma.quoteItem.findFirst({
+      where: { fabricId: id }
+    })
+
+    if (isUsed) {
+      return { 
+        success: false, 
+        error: "Impossible de supprimer ce tissu car il est utilisé dans des devis en cours ou passés." 
+      }
+    }
+
+    // 2. Si libre, on supprime
+    await prisma.fabric.delete({
+      where: { id }
+    })
   
-  revalidatePath('/stock')
+    revalidatePath('/stock')
+    return { success: true }
+
+  } catch (error) {
+    console.error("Erreur suppression tissu:", error)
+    return { success: false, error: "Une erreur technique est survenue." }
+  }
 }

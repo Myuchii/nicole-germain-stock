@@ -24,35 +24,61 @@ export function calculateNGProduction(
 const getOptimizedLinearMeters = (lengthCm: number, widthCm: number) => {
   const laizeCm = laize;
   
-  // 🆕 TEST LES 2 SENS (optimisé)
-  const sens1_ok = widthCm <= laizeCm;   // Largeur dans laize
-  const sens2_ok = lengthCm <= laizeCm;  // Longueur dans laize
+  const sens1_ok = widthCm <= laizeCm;   // Largeur dans laize (Coupe = lengthCm)
+  const sens2_ok = lengthCm <= laizeCm;  // Longueur dans laize (Coupe = widthCm)
   
-  // PRIORITÉ 1 : 1 PANNEAU (meilleur sens)
+  // CAS 1 : Les deux sens sont possibles -> On prend le plus court !
+  if (sens1_ok && sens2_ok) {
+    const coupeSens1 = lengthCm;
+    const coupeSens2 = widthCm;
+    
+    if (coupeSens1 <= coupeSens2) {
+      return {
+        meters: coupeSens1 / 100 * 1.02,
+        panels: 1,
+        needsAssembly: false,
+        method: '1_panel_sens1_opti',
+        usedLength: lengthCm,
+        usedWidth: widthCm
+      };
+    } else {
+      return {
+        meters: coupeSens2 / 100 * 1.02,
+        panels: 1,
+        needsAssembly: false,
+        method: '1_panel_sens2_opti',
+        usedLength: widthCm,
+        usedWidth: lengthCm
+      };
+    }
+  }
+  
+  // CAS 2 : Uniquement le sens 1 est possible
   if (sens1_ok) {
     return {
       meters: lengthCm / 100 * 1.02,
       panels: 1,
       needsAssembly: false,
-      method: '1_panel_sens1',
+      method: '1_panel_sens1_forced',
       usedLength: lengthCm,
       usedWidth: widthCm
     };
   }
   
+  // CAS 3 : Uniquement le sens 2 est possible
   if (sens2_ok) {
     return {
       meters: widthCm / 100 * 1.02,
       panels: 1,
       needsAssembly: false,
-      method: '1_panel_sens2',
+      method: '1_panel_sens2_forced',
       usedLength: widthCm,
       usedWidth: lengthCm
     };
   }
   
-  // PRIORITÉ 2 : ASSEMBLAGE (seulement si les 2 sens échouent)
-  const panelsW = Math.ceil(Math.max(lengthCm, widthCm) / laizeCm);
+  // CAS 4 : Aucun sens ne rentre -> Assemblage obligatoire
+  const panelsW = Math.ceil(Math.min(lengthCm, widthCm) / laizeCm); // Utilise le plus petit côté pour minimiser les panneaux
   const linearM = Math.max(lengthCm, widthCm) / 100 * panelsW * 1.08;
   
   return {
@@ -122,7 +148,7 @@ const getOptimizedLinearMeters = (lengthCm: number, widthCm: number) => {
   }
 
   // Gamme spéciale
-  if (range === 'TR' || range === 'TPR') labor += 30;
+  if (range === 'TR' || range === 'TPR') labor += 15;
 
   const fabricCost = mainMeters * fabrics.mainPrice + secondaryMeters * (fabrics.secondaryPrice || 0);
   const laborCost = labor * costPerMinute;

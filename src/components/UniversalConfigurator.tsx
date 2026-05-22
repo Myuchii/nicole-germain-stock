@@ -33,6 +33,12 @@ export default function UniversalConfigurator({ fabrics }: { fabrics: Fabric[] }
   ])
   const [isPending, setIsPending] = useState(false)
 
+  const [options, setOptions] = useState({
+    isChute: false,
+    isTTC: false,
+    discountPercent: 0
+  })
+
   const results = products.map(product => {
     const fabric = fabrics.find(f => f.id === product.fabricId)
     return calculateNGProduction(
@@ -74,13 +80,21 @@ export default function UniversalConfigurator({ fabrics }: { fabrics: Fabric[] }
     ))
   }
 
-  const handleSave = async () => {
-    if (products.filter(p => p.fabricId).length === 0) return alert("Choisis un tissu !")
-    setIsPending(true)
-    await createQuoteFromCalculator({ products })
-    setIsPending(false)
-    alert("Devis enregistré avec succès !")
-  }
+const handleSave = async () => {
+  if (products.filter(p => p.fabricId).length === 0) return alert("Choisis un tissu !")
+  setIsPending(true)
+  
+  // 🆕 On envoie les produits ET les options globales de facturation !
+  await createQuoteFromCalculator({ 
+    products,
+    isChute: options.isChute,
+    isTTC: options.isTTC,
+    discountPercent: options.discountPercent
+  })
+  
+  setIsPending(false)
+  alert("Devis enregistré avec succès !")
+}
 
   // NOUVEAU : Générer PDF
   const handleDownloadPDF = async () => {
@@ -175,7 +189,7 @@ export default function UniversalConfigurator({ fabrics }: { fabrics: Fabric[] }
                   <select 
                     value={product.family}
                     onChange={(e) => updateProduct(product.id, { family: e.target.value })} 
-                    className="w-full p-4 bg-slate-50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    className="w-full p-4 bg-slate-50 text-slate-700 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 font-medium outline-none invalid:text-slate-400"
                   >
                     <option value="FITTED">Drap Housse / Protège Matelas</option>
                     <option value="ENVELOPE">Housse de Couette / Taie</option>
@@ -190,7 +204,7 @@ export default function UniversalConfigurator({ fabrics }: { fabrics: Fabric[] }
                   <select 
                     value={product.range}
                     onChange={(e) => updateProduct(product.id, { range: e.target.value })} 
-                    className="w-full p-4 bg-slate-50 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    className="w-full p-4 bg-slate-50 text-slate-700 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 font-medium outline-none invalid:text-slate-400"
                   >
                     <option value="BASIQUE">Standard / Basique</option>
                     <option value="MONACO">Monaco (Bicolore)</option>
@@ -228,14 +242,14 @@ export default function UniversalConfigurator({ fabrics }: { fabrics: Fabric[] }
                         value={product.dims.L} 
                         onChange={(e) => updateDims(product.id, { ...product.dims, L: Number(e.target.value) })}
                         placeholder="Long." 
-                        className="p-4 rounded-xl border-none text-center font-bold" 
+                        className="p-4 rounded-xl border-none text-center font-bold text-slate-400" 
                       />
                       <input 
                         type="number" 
                         value={product.dims.l} 
                         onChange={(e) => updateDims(product.id, { ...product.dims, l: Number(e.target.value) })}
                         placeholder="Larg." 
-                        className="p-4 rounded-xl border-none text-center font-bold" 
+                        className="p-4 rounded-xl border-none text-center font-bold text-slate-400" 
                       />
                       {product.family === 'FITTED' && (
                         <input 
@@ -243,7 +257,7 @@ export default function UniversalConfigurator({ fabrics }: { fabrics: Fabric[] }
                           value={product.dims.bonnet} 
                           onChange={(e) => updateDims(product.id, { ...product.dims, bonnet: Number(e.target.value) })}
                           placeholder="Bonnet" 
-                          className="p-4 rounded-xl border-none text-center font-bold" 
+                          className="p-4 rounded-xl border-none text-center font-bold text-slate-400" 
                         />
                       )}
                     </>
@@ -272,6 +286,56 @@ export default function UniversalConfigurator({ fabrics }: { fabrics: Fabric[] }
           )
         })}
 
+<div className="bg-slate-50 p-5 rounded-3xl border border-slate-100 space-y-4 my-6">
+  <h4 className="font-bold text-sm text-slate-700 font-serif">Options de facturation</h4>
+  
+  <div className="grid grid-cols-2 gap-4">
+    {/* CASE À COCHER : CHUTE */}
+    <label className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100/50 transition-colors">
+      <input 
+        type="checkbox" 
+        checked={options.isChute}
+        onChange={(e) => setOptions({ ...options, isChute: e.target.checked })}
+        className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+      />
+      <div className="text-xs">
+        <p className="font-bold text-slate-800">Utiliser une chute</p>
+        <p className="text-slate-400">Stock non déduit</p>
+      </div>
+    </label>
+
+    {/* BASCULE : HT / TTC */}
+    <label className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100/50 transition-colors">
+      <input 
+        type="checkbox" 
+        checked={options.isTTC}
+        onChange={(e) => setOptions({ ...options, isTTC: e.target.checked })}
+        className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+      />
+      <div className="text-xs">
+        <p className="font-bold text-slate-800">Prix TTC (+20%)</p>
+        <p className="text-slate-400">Client particulier</p>
+      </div>
+    </label>
+  </div>
+
+  {/* CHAMP : PROMOTION */}
+  <div className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-100">
+    <span className="text-xs font-bold text-slate-700 whitespace-nowrap">Remise commerciale :</span>
+    <div className="relative flex-1">
+      <input 
+        type="number" 
+        value={options.discountPercent || ''}
+        onChange={(e) => setOptions({ ...options, discountPercent: parseFloat(e.target.value) || 0 })}
+        min="0" 
+        max="100" 
+        placeholder="0"
+        className="w-full text-right pr-7 py-1 px-2 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      />
+      <span className="absolute right-3 top-1.5 text-xs font-bold text-slate-400">%</span>
+    </div>
+  </div>
+</div>
         {/* SECTION RÉSULTAT + BOUTONS */}
         <div className="p-6 bg-indigo-600 rounded-[2rem] text-white shadow-xl shadow-indigo-200">
           <div className="flex justify-between items-end mb-6">
@@ -301,7 +365,7 @@ export default function UniversalConfigurator({ fabrics }: { fabrics: Fabric[] }
               className="px-6 py-4 bg-white/80 text-indigo-600 rounded-2xl font-bold flex items-center gap-2 hover:bg-white hover:shadow-md transition-all border border-indigo-200"
             >
               <Plus size={20} />
-              Produit +
+              Produit
             </button>
 
             <button 

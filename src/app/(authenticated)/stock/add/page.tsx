@@ -12,26 +12,32 @@ export default function AddFabricPage() {
         <div className="grid grid-cols-2 gap-6">
           <div className="space-y-2">
             <label className="text-sm font-bold text-slate-700">Référence</label>
-            <input name="reference" placeholder="ex: SOIE-001" className="w-full p-3 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" required />
+            <input name="reference" placeholder="ex: SOIE-001" className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" required />
           </div>
           <div className="space-y-2">
             <label className="text-sm font-bold text-slate-700">Nom du tissu</label>
-            <input name="name" placeholder="ex: Satin de Soie" className="w-full p-3 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" required />
+            <input name="name" placeholder="ex: Satin de Soie" className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" required />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-6">
           <div className="space-y-2">
             <label className="text-sm font-bold text-slate-700">Couleur</label>
-            <input name="color" placeholder="ex: Bleu Nuit" className="w-full p-3 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" required />
+            <input name="color" placeholder="ex: Bleu Nuit" className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" required />
           </div>
-          <div className="space-y-2">
-            <label className="text-sm font-bold text-slate-700">Unité</label>
-            <select name="unit" className="w-full p-3 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-indigo-500">
-              <option value="METER">Mètre</option>
-              <option value="UNIT">Unité (pièce)</option>
-            </select>
-          </div>
+        <div className="space-y-2">
+          <label className="text-sm font-bold text-slate-700">Unité</label>
+          <select 
+            name="unit" 
+            defaultValue=""
+            className="w-full p-3 bg-slate-50 text-slate-700 rounded-xl border-none focus:ring-2 focus:ring-indigo-500 font-medium outline-none invalid:text-slate-400"
+            required
+          >
+            <option value="" disabled className="text-slate-400">-- Choisir une unité --</option>
+            <option value="METER" className="text-slate-900">Mètre</option>
+            <option value="UNIT" className="text-slate-900">Unité (pièce)</option>
+          </select>
+        </div>
         </div>
         <div className="grid grid-cols-2 gap-6">
           <div className="space-y-2">
@@ -41,7 +47,7 @@ export default function AddFabricPage() {
               type="number" 
               step="0.01" 
               placeholder="ex: 50.5" 
-              className="w-full p-3 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" 
+              className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" 
               required 
             />
         </div>
@@ -51,7 +57,7 @@ export default function AddFabricPage() {
             name="width" 
             type="number" 
             placeholder="ex: 280" 
-            className="w-full p-3 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" 
+            className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" 
           />
         </div>
           <div className="space-y-2">
@@ -61,7 +67,7 @@ export default function AddFabricPage() {
               type="number" 
               step="0.01" 
               placeholder="0.00" 
-              className="w-full p-3 bg-slate-50 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" 
+              className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" 
               required 
             />
           </div>

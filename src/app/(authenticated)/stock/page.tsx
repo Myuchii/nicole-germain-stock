@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
-import { Plus, Search, Filter } from 'lucide-react'
+import { Plus, Search, Filter, Trash2 } from 'lucide-react'
+import { deleteFabric } from '@/app/_actions/fabric-actions'
 import Link from 'next/link'
 
 const prisma = new PrismaClient()
@@ -65,6 +66,13 @@ export default async function StockPage() {
                 <td className="px-6 py-4 text-center">
                   <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">En stock</span>
                 </td>
+                <td className="px-6 py-4 text-center">
+                <form action={async () => { 'use server'; await deleteFabric(f.id); }}>
+                    <button type="submit" className="p-2 text-red-600 bg-red-50 rounded-xl hover:bg-red-600 hover:text-white transition-all mx-auto flex items-center justify-center">
+                      <Trash2 size={16} />
+                    </button>
+                  </form>
+                  </td>
               </tr>
             ))}
           </tbody>

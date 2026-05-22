@@ -13,8 +13,10 @@ export default function Navbar() {
         {/* Menu */}
         <div className="flex items-center gap-2">
           <Link href="/dashboard" className="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Tableau de bord</Link>
+          <Link href="/stock-Boutique" className="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Stock Boutique</Link>
           <Link href="/stock" className="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Stock tissus</Link>
           <Link href="/orders" className="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Commandes</Link>
+          <Link href="/atelier" className="px-5 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Atelier</Link>
           <Link href="/quotes" className="px-5 py-2.5 rounded-xl text-sm font-medium bg-slate-900 text-white hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-100">Nouveau Devis</Link>
         </div>
       </div>

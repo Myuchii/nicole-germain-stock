@@ -37,7 +37,7 @@ model Quote {
   quantity    Float       @default(0) // On l'ajoute pour corriger ton erreur d'action
   createdAt   DateTime    @default(now())
   validatedAt DateTime?
-
+  isTTC       Boolean     @default(false)
   items       QuoteItem[]
   userId      String?
   user        User?       @relation(fields: [userId], references: [id])
@@ -66,9 +66,81 @@ model QuoteItem {
   prodTimeMinutes Int
   costPerMinute   Float    // Changé Decimal -> Float
   sellingPrice    Float    // Changé Decimal -> Float
-
+  statusProduction String    @default("A_COUPER")
+  createdAt        DateTime @default(now())    // Entrée en coupe
+  startedCoutureAt DateTime?                   // Passage en couture (= Fin de la coupe)
+  finishedAt       DateTime?                   // Passage à Prêt (= Fin de la couture)
+  isChute          Boolean   @default(false)     // Case à cocher "Chute"
+  discountPercent  Float     @default(0.0)       // Pour les promos
   quote  Quote  @relation(fields: [quoteId], references: [id])
   fabric Fabric @relation(fields: [fabricId], references: [id])
+}
+
+// ② STOCK PRODUITS FINIS (Confection Maison)
+model FinishedProduct {
+  id              String   @id @default(cuid())
+  reference       String   @unique
+  name            String
+  family          String   // FITTED, ENVELOPE, FLAT, etc.
+  dimensions      String   // Ex: "140x190x30" ou "220x240"
+  stockQuantity   Int      @default(0)
+  alertThreshold  Int      @default(5)     // 🚨 Seuil d'alerte configuré par Nicole
+  sellingPriceHT  Float    // Prix de vente habituel
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  lots FinishedProductLot[]
+}
+
+model FinishedProductLot {
+  id                 String          @id @default(cuid())
+  finishedProductId  String
+  quantityManufactured Int           // Combien Nicole en a cousu ce jour-là
+  quantityLeft       Int             // Ce qu'il reste à vendre de cette fournée
+  sellingPriceHT     Float           // 📈 Prix de vente fixé pour CETTE production
+  createdAt          DateTime        @default(now())
+
+  finishedProduct    FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
+}
+
+model SaleLog {
+  id              String   @id @default(cuid())
+  referenceItem   String
+  name            String
+  type            String
+  quantitySold    Int
+  totalPriceHT    Float
+  paymentMethod   String
+  isTTC           Boolean  @default(false) // 🆕 Vente particulier (TTC)
+  totalPriceTTC   Float    @default(0)     // 🆕 Montant final payé avec TVA
+  createdAt       DateTime @default(now())
+}
+
+// Modification du modèle ③ pour refléter les lots
+model Merchandise {
+  id              String           @id @default(cuid())
+  reference       String           @unique
+  name            String
+  category        String
+  alertThreshold  Int              @default(3)
+  sellingPriceHT  Float            // Le prix de revente en boutique (unique)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  
+  // 🆕 Liaison vers les lots d'achats différents
+  lots            MerchandiseLot[]
+}
+
+model MerchandiseLot {
+  id              String      @id @default(cuid())
+  merchandiseId   String
+  quantityBought  Int
+  quantityLeft    Int
+  purchasePriceHT Float       // 💰 Prix auquel tu l'as acheté
+  sellingPriceHT  Float       @default(0) // 📈 Prix auquel tu as décidé de le vendre LE JOUR J
+  createdAt       DateTime    @default(now())
+
+  merchandise     Merchandise @relation(fields: [merchandiseId], references: [id], onDelete: Cascade)
 }
 
 model User {

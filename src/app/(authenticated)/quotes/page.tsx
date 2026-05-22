@@ -36,15 +36,15 @@ export default async function QuotesPage() {
   return (
     <div className="grid lg:grid-cols-12 gap-10">
       {/* COLONNE GAUCHE : LISTE DES DEVIS */}
-      <div className="lg:col-span-7 space-y-10">
+      <div className="lg:col-span-6 space-y-10">
         <div>
           <h1 className="text-3xl font-serif font-bold text-slate-900">Gestion des Devis</h1>
           <p className="text-slate-500">Transformez vos calculs en commandes réelles.</p>
         </div>
 
         <div className="space-y-6">
-          <h2 className="text-xl font-serif font-bold flex items-center gap-2">
-            <FileText className="text-indigo-600" /> Devis en attente
+          <h2 className="text-xl font-serif font-bold flex items-center gap-2 text-slate-700">
+            <FileText className="text-slate-800" /> Devis en attente
           </h2>
           
           {quotes.length === 0 ? (
