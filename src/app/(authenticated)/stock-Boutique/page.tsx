@@ -61,17 +61,33 @@ export default function StockBoutiquePage() {
     document.body.removeChild(link)
   }
 
-  // CALCULS KPIs GLOBALS ADAPTÉS AUX LOTS QUANTIFIÉS
-  const totalPFQuantity = inventory?.finished?.items?.reduce((sum: number, p: any) => sum + p.stockQuantity, 0) || 0
-  const totalMAQuantity = inventory?.merchandise?.items?.reduce((sum: number, m: any) => sum + (m.lots?.reduce((s: number, l: any) => s + l.quantityLeft, 0) || 0), 0) || 0
+// ==========================================
+  // 💡 NOUVEAUX CALCULS DES KPIs (100% basés sur les Lots)
+  // ==========================================
 
+  // 1. Articles Disponibles (Somme exacte des lots PF + Lots MA)
+  const totalPFQuantity = inventory?.finished?.items?.reduce((sum: number, p: any) => 
+    sum + (p.lots?.reduce((s: number, l: any) => s + l.quantityLeft, 0) || 0), 0) || 0
+    
+  const totalMAQuantity = inventory?.merchandise?.items?.reduce((sum: number, m: any) => 
+    sum + (m.lots?.reduce((s: number, l: any) => s + l.quantityLeft, 0) || 0), 0) || 0
+
+  // 2. Valeur Absolue d'achat (Lots MA restants * leur prix d'achat respectif)
   const totalMAValuePurchase = inventory?.merchandise?.items?.reduce((sum: number, m: any) => 
     sum + (m.lots?.reduce((s: number, l: any) => s + (l.quantityLeft * l.purchasePriceHT), 0) || 0), 0) || 0
   
-  const totalAlerts = (inventory?.finished?.alertCount || 0) + (inventory?.merchandise?.items?.filter((m: any) => {
+  // 3. Alertes de Seuils Critiques (On compare la somme des lots au seuil d'alerte)
+  const pfAlerts = inventory?.finished?.items?.filter((p: any) => {
+    const stock = p.lots?.reduce((s: number, l: any) => s + l.quantityLeft, 0) || 0
+    return stock <= p.alertThreshold
+  }).length || 0
+
+  const maAlerts = inventory?.merchandise?.items?.filter((m: any) => {
     const stock = m.lots?.reduce((s: number, l: any) => s + l.quantityLeft, 0) || 0
     return stock <= m.alertThreshold
-  }).length || 0)
+  }).length || 0
+
+  const totalAlerts = pfAlerts + maAlerts
 
   return (
     <div className="p-8 space-y-8">
