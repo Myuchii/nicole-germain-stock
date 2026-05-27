@@ -4,6 +4,7 @@ import UniversalConfigurator from '@/components/UniversalConfigurator' // Ton no
 import { FileText, History, Check, Trash2 } from 'lucide-react'
 import { createQuoteFromCalculator, validateQuote, deleteQuote } from '@/app/_actions/quote-actions' // On va les créer
 
+export const dynamic = 'force-dynamic'
 const prisma = new PrismaClient()
 
 export default async function QuotesPage() {
