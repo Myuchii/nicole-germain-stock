@@ -72,6 +72,17 @@ export default function AddFabricPage() {
             />
           </div>
         </div>
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-slate-700">Seuil d'alerte (🚨)</label>
+            <input 
+              name="alertThreshold" 
+              type="number" 
+              step="0.1" 
+              defaultValue="5" 
+              className="w-full p-3 bg-amber-50 placeholder-amber-400 text-amber-900 rounded-xl border border-amber-100 focus:ring-2 focus:ring-amber-500 font-bold" 
+              required 
+            />
+          </div>
 
         <button type="submit" className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-indigo-600 transition-all shadow-lg">
           Enregistrer le tissu

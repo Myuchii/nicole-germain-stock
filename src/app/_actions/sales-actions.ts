@@ -4,123 +4,123 @@ import { prisma } from "@/lib/prisma"
 import { revalidatePath } from 'next/cache'
 
 export async function recordSale(formData: FormData) {
-  const reference = formData.get('reference') as string
-  const quantity = parseInt(formData.get('quantity') as string) || 0
+  // On récupère le panier sous forme de chaîne JSON et la méthode de paiement
+  const cartJson = formData.get('cart') as string
   const paymentMethod = formData.get('paymentMethod') as string
-  const type = formData.get('type') as 'PRODUIT_FINI' | 'MARCHANDISE'
+
+  if (!cartJson || !paymentMethod) return { success: false, error: "Données de vente manquantes" }
 
   try {
-    let itemName = ""
-    let totalCostOfVente = 0
-    let finalTotalPriceHT = 0 // ⬅️ C'est cette variable qui va centraliser le prix final calculé
+    // On décode le panier (qui sera envoyé par notre composant React)
+    const cartItems: { reference: string; quantity: number; type: 'PRODUIT_FINI' | 'MARCHANDISE' }[] = JSON.parse(cartJson)
 
-    // ==========================================
-    // CAS 1 : FLUX ② PRODUITS FINIS (CONFECTION)
-    // ==========================================
-    if (type === 'PRODUIT_FINI') {
-      const item = await prisma.finishedProduct.findUnique({ 
-        where: { reference },
-        include: { lots: { orderBy: { createdAt: 'asc' } } }
-      })
+    if (cartItems.length === 0) return { success: false, error: "Le panier est vide" }
 
-      if (!item) return { success: false, error: "Article introuvable" }
+    const ticketId = `TICK-${Date.now().toString().slice(-6)}`
+    // On boucle sur chaque article du panier pour appliquer la logique FIFO
+    for (const cartItem of cartItems) {
+      const { reference, quantity, type } = cartItem
+      let itemName = ""
+      let finalTotalPriceHT = 0
 
-      const totalInStock = item.lots.reduce((sum, l) => sum + l.quantityLeft, 0)
-      if (totalInStock < quantity) {
-        return { success: false, error: `Stock insuffisant ! (Dispo total: ${totalInStock})` }
-      }
+      // ==========================================
+      // CAS 1 : FLUX ② PRODUITS FINIS
+      // ==========================================
+      if (type === 'PRODUIT_FINI') {
+        const item = await prisma.finishedProduct.findUnique({ 
+          where: { reference },
+          include: { lots: { orderBy: { createdAt: 'asc' } } }
+        })
 
-      let quantityToDeduct = quantity
-      let totalRevenueHT = 0
+        if (!item) throw new Error(`Article ${reference} introuvable`)
 
-      for (const lot of item.lots) {
-        if (quantityToDeduct <= 0) break
+        const totalInStock = item.lots.reduce((sum, l) => sum + l.quantityLeft, 0)
+        if (totalInStock < quantity) throw new Error(`Stock insuffisant pour ${reference}`)
 
-        if (lot.quantityLeft > 0) {
-          const take = Math.min(quantityToDeduct, lot.quantityLeft)
-          
-          // Sécurité : Si le lot a un prix à 0 (anciens tests), on prend le prix par défaut de la fiche
-          const priceToUse = lot.sellingPriceHT && lot.sellingPriceHT > 0 ? lot.sellingPriceHT : item.sellingPriceHT
-          
-          totalRevenueHT += take * priceToUse
-          quantityToDeduct -= take
+        let quantityToDeduct = quantity
+        let totalRevenueHT = 0
 
-          await prisma.finishedProductLot.update({
-            where: { id: lot.id },
-            data: { quantityLeft: lot.quantityLeft - take }
-          })
+        for (const lot of item.lots) {
+          if (quantityToDeduct <= 0) break
+
+          if (lot.quantityLeft > 0) {
+            const take = Math.min(quantityToDeduct, lot.quantityLeft)
+            const priceToUse = lot.sellingPriceHT && lot.sellingPriceHT > 0 ? lot.sellingPriceHT : item.sellingPriceHT
+            
+            totalRevenueHT += take * priceToUse
+            quantityToDeduct -= take
+
+            await prisma.finishedProductLot.update({
+              where: { id: lot.id },
+              data: { quantityLeft: lot.quantityLeft - take }
+            })
+          }
         }
-      }
+        itemName = item.name
+        finalTotalPriceHT = totalRevenueHT
+      } 
+      // ==========================================
+      // CAS 2 : FLUX ③ MARCHANDISES
+      // ==========================================
+      else {
+        const item = await prisma.merchandise.findUnique({ 
+          where: { reference },
+          include: { lots: { orderBy: { createdAt: 'asc' } } }
+        })
 
-      itemName = item.name
-      finalTotalPriceHT = totalRevenueHT // 💡 Affectation explicite du montant calculé
-    } 
-    // ==========================================
-    // CAS 2 : FLUX ③ MARCHANDISES (NÉGOCE)
-    // ==========================================
-    else {
-      const item = await prisma.merchandise.findUnique({ 
-        where: { reference },
-        include: { lots: { orderBy: { createdAt: 'asc' } } }
-      })
+        if (!item) throw new Error(`Article ${reference} introuvable`)
 
-      if (!item) return { success: false, error: "Article introuvable" }
+        const totalInStock = item.lots.reduce((sum, l) => sum + l.quantityLeft, 0)
+        if (totalInStock < quantity) throw new Error(`Stock insuffisant pour ${reference}`)
 
-      const totalInStock = item.lots.reduce((sum, l) => sum + l.quantityLeft, 0)
-      if (totalInStock < quantity) {
-        return { success: false, error: `Stock total insuffisant ! (Dispo total: ${totalInStock})` }
-      }
+        let quantityToDeduct = quantity
+        let totalRevenueHT = 0
 
-      let quantityToDeduct = quantity
-      let totalRevenueHT = 0
+        for (const lot of item.lots) {
+          if (quantityToDeduct <= 0) break
 
-      for (const lot of item.lots) {
-        if (quantityToDeduct <= 0) break
+          if (lot.quantityLeft > 0) {
+            const take = Math.min(quantityToDeduct, lot.quantityLeft)
+            const priceToUse = lot.sellingPriceHT && lot.sellingPriceHT > 0 ? lot.sellingPriceHT : item.sellingPriceHT
+            
+            totalRevenueHT += take * priceToUse 
+            quantityToDeduct -= take
 
-        if (lot.quantityLeft > 0) {
-          const take = Math.min(quantityToDeduct, lot.quantityLeft)
-          
-          totalCostOfVente += take * lot.purchasePriceHT
-          
-          // Sécurité : Si le lot a un prix à 0 (anciens tests), on prend le prix de la fiche produit
-          const priceToUse = lot.sellingPriceHT && lot.sellingPriceHT > 0 ? lot.sellingPriceHT : item.sellingPriceHT
-          
-          totalRevenueHT += take * priceToUse 
-          quantityToDeduct -= take
-
-          await prisma.merchandiseLot.update({
-            where: { id: lot.id },
-            data: { quantityLeft: lot.quantityLeft - take }
-          })
+            await prisma.merchandiseLot.update({
+              where: { id: lot.id },
+              data: { quantityLeft: lot.quantityLeft - take }
+            })
+          }
         }
+        itemName = item.name
+        finalTotalPriceHT = totalRevenueHT
       }
 
-      itemName = item.name
-      finalTotalPriceHT = totalRevenueHT // 💡 Affectation explicite du montant calculé
-    }
-
-    // ==========================================
-    // ECRITURE COMMUNE DANS LE JOURNAL DES VENTES
-    // ==========================================
-    await prisma.saleLog.create({
-      data: {
-        referenceItem: reference,
-        name: itemName,
-        type: type,
-        quantitySold: quantity,
-        totalPriceHT: finalTotalPriceHT, // ⬅️ CORRECTION ICI : On passe la variable sécurisée
-        paymentMethod: paymentMethod
-      }
-    })
+      // ==========================================
+      // ECRITURE DANS LE JOURNAL DES VENTES (Par article)
+      // ==========================================
+      await prisma.saleLog.create({
+        data: {
+          referenceItem: reference,
+          name: itemName,
+          type: type,
+          quantitySold: quantity,
+          totalPriceHT: finalTotalPriceHT,
+          paymentMethod: paymentMethod,
+          ticketId: ticketId
+        }
+      })
+    } // Fin de la boucle du panier
 
     revalidatePath('/stock-Boutique')
     return { success: true }
   } catch (e: any) {
-    console.error("Erreur recordSale:", e)
-    return { success: false, error: "Erreur technique lors de la vente" }
+    console.error("Erreur recordSale (Panier):", e)
+    return { success: false, error: e.message || "Erreur technique lors de la vente" }
   }
 }
 
+// (Ta fonction getSalesJournal reste identique en dessous)
 export async function getSalesJournal(type: 'PRODUIT_FINI' | 'MARCHANDISE') {
   return await prisma.saleLog.findMany({
     where: { type },

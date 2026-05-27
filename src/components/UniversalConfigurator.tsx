@@ -2,8 +2,9 @@
 import { useState } from 'react'
 import { calculateNGProduction } from '@/lib/engine'
 import { createQuoteFromCalculator } from '@/app/_actions/quote-actions'
+import { createClientQuick } from '@/app/_actions/client-actions'
 import { generateQuotePDF } from '@/lib/pdf-generator'
-import { Calculator, Save, Ruler, Layers, Plus, Trash2, Download } from 'lucide-react'
+import { Calculator, Save, Ruler, Layers, Plus, Trash2, Download, UserPlus, Check } from 'lucide-react'
 
 interface Fabric {
   id: string
@@ -21,7 +22,14 @@ interface Product {
   dims: { L: number; l: number; bonnet: number; diametre: number }
 }
 
-export default function UniversalConfigurator({ fabrics }: { fabrics: Fabric[] }) {
+// 🆕 Définition de l'interface Client manquante
+interface Client {
+  id: string
+  name: string
+  company?: string
+}
+
+export default function UniversalConfigurator({ fabrics, clients: initialClients }: { fabrics: Fabric[], clients: Client[] }) {
   const [products, setProducts] = useState<Product[]>([
     {
       id: '1',
@@ -32,6 +40,15 @@ export default function UniversalConfigurator({ fabrics }: { fabrics: Fabric[] }
     }
   ])
   const [isPending, setIsPending] = useState(false)
+
+  const [clients, setClients] = useState<Client[]>(initialClients)
+  const [selectedClientId, setSelectedClientId] = useState('')
+  const [clientSearch, setClientSearch] = useState('')
+
+  // 🆕 Déclaration des états pour l'adresse volante
+  const [quickAddress, setQuickAddress] = useState('')
+  const [quickZip, setQuickZip] = useState('')
+  const [quickCity, setQuickCity] = useState('')
 
   const [options, setOptions] = useState({
     isChute: false,
@@ -80,24 +97,39 @@ export default function UniversalConfigurator({ fabrics }: { fabrics: Fabric[] }
     ))
   }
 
-const handleSave = async () => {
-  if (products.filter(p => p.fabricId).length === 0) return alert("Choisis un tissu !")
-  setIsPending(true)
-  
-  // 🆕 On envoie les produits ET les options globales de facturation !
-  await createQuoteFromCalculator({ 
-    products,
-    isChute: options.isChute,
-    isTTC: options.isTTC,
-    discountPercent: options.discountPercent
-  })
-  
-  setIsPending(false)
-  alert("Devis enregistré avec succès !")
-}
+  const handleSave = async () => {
+    if (!selectedClientId) return alert("Attribue d'abord ce devis à un client (existant ou nouveau) !")
+    if (products.filter(p => p.fabricId).length === 0) return alert("Choisis un tissu au moins sur l'un de tes articles !")
+    
+    setIsPending(true)
+    
+    await createQuoteFromCalculator({ 
+      products,
+      clientId: selectedClientId,
+      isChute: options.isChute,
+      isTTC: options.isTTC,
+      discountPercent: options.discountPercent
+    })
+    
+    setIsPending(false)
+    alert("Devis enregistré avec succès ! Retrouve-le dans la liste de gauche.")
+    
+    setClientSearch('')
+    setSelectedClientId('')
+  }
 
-  // NOUVEAU : Générer PDF
+  const filteredClients = clients.filter(c =>
+    c.name.toLowerCase().includes(clientSearch.toLowerCase())
+  )
+
+// NOUVEAU : Générer PDF avec intégration du client associé
   const handleDownloadPDF = async () => {
+    // On récupère l'objet client complet sélectionné par Nicole
+    const currentClient = clients.find(c => c.id === selectedClientId)
+    if (!currentClient) {
+      return alert("💡 Associe d'abord un client pour pouvoir éditer le PDF !")
+    }
+
     const validProducts = products
       .filter(p => p.fabricId)
       .map((p) => {
@@ -119,18 +151,32 @@ const handleSave = async () => {
       })
 
     const quoteData = {
-      id: `DEV-${Date.now()}`,
-      reference: `DEV-${Date.now()}`,
+      id: `DEV-${Date.now().toString().slice(-6)}`,
+      reference: `DEV-${Date.now().toString().slice(-6)}`,
       totalPrice: grandTotalHT,
-      products: validProducts
+      isTTC: options.isTTC,
+      discountPercent: options.discountPercent,
+      products: validProducts,
+      // 🆕 On injecte les données de notre client trouvé
+      client: {
+        name: currentClient.name,
+        address: (currentClient as any).address,
+        zipCode: (currentClient as any).zipCode,
+        city: (currentClient as any).city,
+        company: (currentClient as any).company
+      }
     }
 
-    try {
+try {
       const pdfBlob = await generateQuotePDF(quoteData)
+      
+      // Si la fonction a renvoyé null (sécurité SSR), on sort proprement
+      if (!pdfBlob) return
+
       const pdfUrl = URL.createObjectURL(pdfBlob)
       const link = document.createElement('a')
       link.href = pdfUrl
-      link.download = `Devis-${quoteData.reference}.pdf`
+      link.download = `Devis_Nicole_Germain_${quoteData.reference}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -155,6 +201,106 @@ const handleSave = async () => {
       </div>
 
       <div className="p-8 space-y-8">
+        
+        {/* 🆕 BLOC SÉCURISÉ : RECHERCHE OU CRÉATION CLIENT AVEC ADRESSE RAPIDE */}
+        <div className="p-5 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">
+          <label className="text-xs font-black text-slate-400 uppercase tracking-wider block">👤 Assignation du client</label>
+          
+          <div className="relative">
+            <input 
+              type="text"
+              placeholder="Taper le nom d'un client..."
+              value={clientSearch}
+              onChange={(e) => {
+                setClientSearch(e.target.value)
+                if (selectedClientId) setSelectedClientId('')
+              }}
+              className="w-full p-3 bg-white placeholder-slate-400 font-bold text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-indigo-500 shadow-sm"
+            />
+            {clientSearch && filteredClients.length > 0 && !selectedClientId && (
+              <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto z-50 text-xs font-semibold divide-y divide-slate-50">
+                {filteredClients.map((c: any) => (
+                  <div 
+                    key={c.id} 
+                    onClick={() => { setSelectedClientId(c.id); setClientSearch(c.name) }}
+                    className="p-3 hover:bg-indigo-50 cursor-pointer text-slate-700 transition-colors"
+                  >
+                    {c.name} {c.company ? `(${c.company})` : ''}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Formulaire d'adresse dynamique pour nouveau client */}
+          {clientSearch && !selectedClientId && !clients.some(c => c.name.toLowerCase() === clientSearch.toLowerCase().trim()) && (
+            <div className="p-4 bg-white rounded-2xl border border-slate-100 space-y-3 shadow-inner">
+              <p className="text-[10px] font-black text-amber-600 uppercase tracking-wider">✨ Nouveau client détecté ! Remplir son adresse pour le PDF :</p>
+              
+              <input 
+                type="text" 
+                placeholder="Rue et numéro (ex: 14 rue de la paix)" 
+                value={quickAddress}
+                onChange={(e) => setQuickAddress(e.target.value)}
+                className="w-full p-2.5 bg-slate-50 placeholder-slate-400 text-xs rounded-xl border-none focus:ring-1 focus:ring-indigo-500 font-medium"
+              />
+              
+              <div className="grid grid-cols-3 gap-2">
+                <input 
+                  type="text" 
+                  placeholder="Code Postal" 
+                  value={quickZip}
+                  onChange={(e) => setQuickZip(e.target.value)}
+                  className="p-2.5 bg-slate-50 placeholder-slate-400 text-xs rounded-xl border-none focus:ring-1 focus:ring-indigo-500 font-medium text-center"
+                />
+                <input 
+                  type="text" 
+                  placeholder="Ville" 
+                  value={quickCity}
+                  onChange={(e) => setQuickCity(e.target.value)}
+                  className="col-span-2 p-2.5 bg-slate-50 placeholder-slate-400 text-xs rounded-xl border-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!quickAddress || !quickZip || !quickCity) {
+                    return alert("💡 Renseigne l'adresse complète pour que le devis PDF soit clean !")
+                  }
+                  
+                  const res = await createClientQuick({
+                    name: clientSearch,
+                    address: quickAddress,
+                    zipCode: quickZip,
+                    city: quickCity
+                  })
+
+                  if (!res.success) alert(res.error)
+                  else if (res.client){
+                    alert(`✅ Client "${res.client.name}" créé avec son adresse !`)
+                    const clientValide = res.client as any as Client
+                    setClients([...clients, clientValide])
+                    setSelectedClientId(clientValide.id)
+                    setQuickAddress('')
+                    setQuickZip('')
+                    setQuickCity('')
+                  }
+                }}
+                className="w-full py-3 bg-emerald-600 text-white font-black rounded-xl text-xs flex items-center justify-center gap-1.5 hover:bg-emerald-700 transition-all shadow-sm uppercase tracking-wider"
+              >
+                <UserPlus size={14} /> Valider & Enregistrer le Client
+              </button>
+            </div>
+          )}
+
+          {selectedClientId && (
+            <p className="text-[10px] text-emerald-600 font-black flex items-center gap-1 bg-emerald-50 p-2 rounded-xl border border-emerald-100">
+              <Check size={12}/> Client associé avec succès (Prêt pour l'enregistrement et le PDF).
+            </p>
+          )}
+        </div>
+
         {/* PRODUITS */}
         {products.map((product) => {
           const currentFabric = fabrics.find(f => f.id === product.fabricId)
@@ -162,7 +308,6 @@ const handleSave = async () => {
 
           return (
             <div key={product.id} className="space-y-6 p-6 bg-slate-50 rounded-3xl border-2 border-slate-200 hover:border-indigo-300 transition-all">
-              {/* EN-TÊTE PRODUIT */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="p-3 bg-indigo-500 rounded-2xl text-white">
@@ -180,7 +325,6 @@ const handleSave = async () => {
                 )}
               </div>
 
-              {/* SECTION 1 : PRODUIT & GAMME */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
@@ -189,7 +333,7 @@ const handleSave = async () => {
                   <select 
                     value={product.family}
                     onChange={(e) => updateProduct(product.id, { family: e.target.value })} 
-                    className="w-full p-4 bg-slate-50 text-slate-700 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 font-medium outline-none invalid:text-slate-400"
+                    className="w-full p-4 bg-slate-50 text-slate-700 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 font-medium outline-none"
                   >
                     <option value="FITTED">Drap Housse / Protège Matelas</option>
                     <option value="ENVELOPE">Housse de Couette / Taie</option>
@@ -204,7 +348,7 @@ const handleSave = async () => {
                   <select 
                     value={product.range}
                     onChange={(e) => updateProduct(product.id, { range: e.target.value })} 
-                    className="w-full p-4 bg-slate-50 text-slate-700 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 font-medium outline-none invalid:text-slate-400"
+                    className="w-full p-4 bg-slate-50 text-slate-700 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 font-medium outline-none"
                   >
                     <option value="BASIQUE">Standard / Basique</option>
                     <option value="MONACO">Monaco (Bicolore)</option>
@@ -214,7 +358,6 @@ const handleSave = async () => {
                 </div>
               </div>
 
-              {/* SECTION 2 : TISSU */}
               <div className="space-y-2">
                 <label className="text-sm font-bold text-slate-700">Tissu à utiliser</label>
                 <select 
@@ -229,7 +372,6 @@ const handleSave = async () => {
                 </select>
               </div>
 
-              {/* SECTION 3 : DIMENSIONS */}
               <div className="p-6 bg-slate-50 rounded-3xl space-y-4">
                 <div className="flex items-center gap-2 text-slate-500 font-bold text-sm uppercase">
                   <Ruler size={16} /> Dimensions (cm)
@@ -273,7 +415,6 @@ const handleSave = async () => {
                 </div>
               </div>
 
-              {/* MINI-RÉSULTAT */}
               {product.fabricId && (
                 <div className="p-4 bg-indigo-500/10 rounded-2xl border border-indigo-200 text-sm">
                   <div className="flex justify-between">
@@ -286,56 +427,55 @@ const handleSave = async () => {
           )
         })}
 
-<div className="bg-slate-50 p-5 rounded-3xl border border-slate-100 space-y-4 my-6">
-  <h4 className="font-bold text-sm text-slate-700 font-serif">Options de facturation</h4>
-  
-  <div className="grid grid-cols-2 gap-4">
-    {/* CASE À COCHER : CHUTE */}
-    <label className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100/50 transition-colors">
-      <input 
-        type="checkbox" 
-        checked={options.isChute}
-        onChange={(e) => setOptions({ ...options, isChute: e.target.checked })}
-        className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-      />
-      <div className="text-xs">
-        <p className="font-bold text-slate-800">Utiliser une chute</p>
-        <p className="text-slate-400">Stock non déduit</p>
-      </div>
-    </label>
+        {/* OPTIONS DE FACTURATION */}
+        <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100 space-y-4 my-6">
+          <h4 className="font-bold text-sm text-slate-700 font-serif">Options de facturation</h4>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <label className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100/50 transition-colors">
+              <input 
+                type="checkbox" 
+                checked={options.isChute}
+                onChange={(e) => setOptions({ ...options, isChute: e.target.checked })}
+                className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+              />
+              <div className="text-xs">
+                <p className="font-bold text-slate-800">Utiliser une chute</p>
+                <p className="text-slate-400">Stock non déduit</p>
+              </div>
+            </label>
 
-    {/* BASCULE : HT / TTC */}
-    <label className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100/50 transition-colors">
-      <input 
-        type="checkbox" 
-        checked={options.isTTC}
-        onChange={(e) => setOptions({ ...options, isTTC: e.target.checked })}
-        className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-      />
-      <div className="text-xs">
-        <p className="font-bold text-slate-800">Prix TTC (+20%)</p>
-        <p className="text-slate-400">Client particulier</p>
-      </div>
-    </label>
-  </div>
+            <label className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100/50 transition-colors">
+              <input 
+                type="checkbox" 
+                checked={options.isTTC}
+                onChange={(e) => setOptions({ ...options, isTTC: e.target.checked })}
+                className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+              />
+              <div className="text-xs">
+                <p className="font-bold text-slate-800">Prix TTC (+20%)</p>
+                <p className="text-slate-400">Client particulier</p>
+              </div>
+            </label>
+          </div>
 
-  {/* CHAMP : PROMOTION */}
-  <div className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-100">
-    <span className="text-xs font-bold text-slate-700 whitespace-nowrap">Remise commerciale :</span>
-    <div className="relative flex-1">
-      <input 
-        type="number" 
-        value={options.discountPercent || ''}
-        onChange={(e) => setOptions({ ...options, discountPercent: parseFloat(e.target.value) || 0 })}
-        min="0" 
-        max="100" 
-        placeholder="0"
-        className="w-full text-right pr-7 py-1 px-2 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-      />
-      <span className="absolute right-3 top-1.5 text-xs font-bold text-slate-400">%</span>
-    </div>
-  </div>
-</div>
+          <div className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-100">
+            <span className="text-xs font-bold text-slate-700 whitespace-nowrap">Remise commerciale :</span>
+            <div className="relative flex-1">
+              <input 
+                type="number" 
+                value={options.discountPercent || ''}
+                onChange={(e) => setOptions({ ...options, discountPercent: parseFloat(e.target.value) || 0 })}
+                min="0" 
+                max="100" 
+                placeholder="0"
+                className="w-full text-right pr-7 py-1 px-2 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <span className="absolute right-3 top-1.5 text-xs font-bold text-slate-400">%</span>
+            </div>
+          </div>
+        </div>
+
         {/* SECTION RÉSULTAT + BOUTONS */}
         <div className="p-6 bg-indigo-600 rounded-[2rem] text-white shadow-xl shadow-indigo-200">
           <div className="flex justify-between items-end mb-6">
@@ -349,7 +489,6 @@ const handleSave = async () => {
             </div>
           </div>
           
-          {/* 3 BOUTONS EN LIGNE */}
           <div className="flex gap-3">
             <button 
               onClick={handleSave}
@@ -378,6 +517,7 @@ const handleSave = async () => {
             </button>
           </div>
         </div>
+
       </div>
     </div>
   )

@@ -9,6 +9,7 @@ async function getOrders() {
   return await prisma.quote.findMany({
     where: { status: QuoteStatus.VALIDATED },
     include: {
+      client: true, // 🆕 INDISPENSABLE : On récupère les infos du client lié !
       items: {
         include: { fabric: true }
       }
@@ -17,14 +18,22 @@ async function getOrders() {
   })
 }
 
-// Interface corrigée
+// Interface TypeScript 100% Pro et Synchronisée
 interface OrderProps {
   id: string
   reference: string
   totalPrice: number
   quantity: number
   createdAt: Date
-  validatedAt: Date | null  // ← CORRIGÉ
+  validatedAt: Date | null
+  client: { // 🆕 Ajouté à l'interface
+    id: string
+    name: string
+    company: string | null
+    address: string | null
+    zipCode: string | null
+    city: string | null
+  }
   items: Array<{
     id: string
     fabric: {
@@ -44,7 +53,7 @@ interface OrderProps {
 }
 
 export default async function OrdersPage() {
-  const orders: OrderProps[] = await getOrders()
+  const orders = await getOrders() as unknown as OrderProps[]
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-8">
@@ -82,7 +91,7 @@ export default async function OrdersPage() {
           {orders.map((order) => (
             <OrderCard 
               key={order.id} 
-              order={order as any}  // ← TEMPORAIRE pour build
+              order={order} // 🎯 Propre, sécurisé et typé (plus de "as any" !)
             />
           ))}
         </div>

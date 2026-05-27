@@ -9,7 +9,15 @@ interface Order {
   reference: string
   totalPrice: number
   quantity: number
-  validatedAt: Date | null  // ← CORRIGÉ
+  validatedAt: Date | null
+  // 🆕 On ajoute le client dans le type attendu par le composant
+  client?: {
+    name: string
+    address: string | null
+    zipCode: string | null
+    city: string | null
+    company: string | null
+  }
   items: Array<{
     id: string
     fabric: {
@@ -25,28 +33,44 @@ interface Order {
 
 export function OrderCard({ order }: { order: Order }) {
   const handleDownloadPDF = async () => {
+    // 1. On mappe les vrais produits de la commande
     const products = order.items.map(item => ({
-      family: 'FITTED',
+      family: 'FITTED', // Idéalement, si tu stockes la family dans QuoteItem, utilise item.family. Ici on garde un fallback propre
       range: 'BASIQUE',
       fabric: {
         reference: item.fabric.reference,
         name: item.fabric.name,
-        pricePerMeter: 25
+        pricePerMeter: 0 // Inutile pour l'affichage final document
       },
-      dims: { L: 200, l: 160, bonnet: 30, diametre: 210 },
+      // Fallback de secours si les dimensions ne sont pas stockées à plat sur l'item
+      dims: { L: 200, l: 160, bonnet: 30, diametre: 210 }, 
       mainFabricMeters: item.quantityMeters || 0,
       laborMinutes: item.prodTimeMinutes,
       totalPriceHT: item.sellingPrice || 0
     }))
 
+    // 2. On construit l'objet pour le PDF avec les VRAIES données du client lié
     const quoteData = {
       id: order.id,
       reference: order.reference,
       totalPrice: order.totalPrice,
-      products
+      isTTC: false, // À adapter selon tes besoins
+      discountPercent: 0,
+      products,
+      // 🆕 ON INJECTE LES INFOS DU CLIENT ICI !
+      client: {
+        name: order.client?.name || "Client Inconnu",
+        address: order.client?.address || undefined,
+        zipCode: order.client?.zipCode || undefined,
+        city: order.client?.city || undefined,
+        company: order.client?.company || undefined
+      }
     }
 
+    // 3. Génération et téléchargement
     const pdfBlob = await generateQuotePDF(quoteData)
+    if (!pdfBlob) return
+
     const pdfUrl = URL.createObjectURL(pdfBlob)
     const link = document.createElement('a')
     link.href = pdfUrl
@@ -58,9 +82,31 @@ export function OrderCard({ order }: { order: Order }) {
   }
 
   const handleDelete = async () => {
-    if (confirm(`Annuler la commande ${order.reference} ?`)) {
-      await deleteQuote(order.id)
+    // Étape 1 : Confirmation globale
+    if (!confirm(`Voulez-vous vraiment annuler la commande ${order.reference} ?`)) {
+      return
+    }
+
+    // Étape 2 : La question magique pour le stock !
+    const isAlreadyCoutured = confirm(
+      "🧵 Question Atelier :\n\n" +
+      "Cet ouvrage a-t-il DÉJÀ été confectionné / cousu ?\n\n" +
+      "👉 Cliquez sur [ OK ] pour l'envoyer directement dans le stock BOUTIQUE (Produits Finis).\n" +
+      "👉 Cliquez sur [ Annuler ] si le tissu n'a pas encore été coupé (les mètres seront reversés dans le rouleau de stock)."
+    )
+
+    // Étape 3 : On appelle l'action serveur avec le bon paramètre
+    const res = await deleteQuote(order.id, isAlreadyCoutured)
+
+    if (res.success) {
+      alert(
+        isAlreadyCoutured 
+          ? "🎉 Commande supprimée de l'atelier et transformée en Produit Fini dans ta Boutique !" 
+          : "✅ Commande annulée. Les métrages ont été remis sur le rouleau de tissu."
+      )
       window.location.reload()
+    } else {
+      alert(res.error)
     }
   }
 
@@ -72,6 +118,16 @@ export function OrderCard({ order }: { order: Order }) {
           <h2 className="text-2xl font-black text-slate-800 group-hover:text-indigo-600 transition-colors">
             {order.reference}
           </h2>
+          <h2 className="text-2xl font-black text-slate-800 group-hover:text-indigo-600 transition-colors">
+            {order.reference}
+          </h2>
+          {/* 🆕 Nom du client affiché sur la carte */}
+          <p className="text-xs font-bold text-indigo-600 uppercase mt-0.5 tracking-wider">
+            👤 {order.client?.name || "Client non spécifié"}
+          </p>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Validée le {order.validatedAt ? new Date(order.validatedAt).toLocaleDateString('fr-FR') : 'N/A'}
+          </p>
           <p className="text-sm text-slate-500 mt-1">
             Validée le {order.validatedAt ? new Date(order.validatedAt).toLocaleDateString('fr-FR') : 'N/A'}
           </p>

@@ -21,6 +21,7 @@ model Fabric {
   alertThresholdUnits   Int?
   pricePerMeter         Float           @default(0)
   pricePerUnit          Float           @default(0)
+  isArchived            Boolean         @default(false)
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
 
@@ -28,6 +29,7 @@ model Fabric {
   quotes                Quote[]
   quoteItems            QuoteItem[]
 }
+
 
 model Quote {
   id          String      @id @default(cuid())
@@ -43,18 +45,42 @@ model Quote {
   user        User?       @relation(fields: [userId], references: [id])
   fabricId    String
   fabric      Fabric      @relation(fields: [fabricId], references: [id])
+  clientId    String
+  client      Client      @relation(fields: [clientId], references: [id])
+}
+
+model Client {
+  id          String   @id @default(cuid())
+  name        String   // Nom de la personne ou contact principal
+  company     String?  // Optionnel (B2B)
+  email       String?  // Optionnel
+  phone       String?  // Optionnel
+  
+  // 🆕 Nouveaux champs pour l'adresse de facturation
+  address     String?  // Rue / Numéro
+  zipCode     String?  // Code Postal
+  city        String?  // Ville
+  country     String?  @default("France") // Pays (par défaut France)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  quotes      Quote[]  
 }
 
 model StockMovement {
   id             String       @id @default(cuid())
   fabricId       String
-  type           MovementType
-  quantityMeters Float?       // Changé Decimal -> Float
+  type           MovementType // ENTRY ou EXIT
+  quantityMeters Float?       
   quantityUnits  Int?
   reason         String
-  createdAt      DateTime     @default(now())
+  
+  // 🆕 AJOUT : Le prix d'achat spécifique pour ce lot / mouvement d'entrée
+  purchasePriceHT Float       @default(0) 
 
-  fabric Fabric @relation(fields: [fabricId], references: [id])
+  createdAt      DateTime     @default(now())
+  fabric         Fabric       @relation(fields: [fabricId], references: [id])
 }
 
 model QuoteItem {
@@ -113,6 +139,7 @@ model SaleLog {
   paymentMethod   String
   isTTC           Boolean  @default(false) // 🆕 Vente particulier (TTC)
   totalPriceTTC   Float    @default(0)     // 🆕 Montant final payé avec TVA
+  ticketId      String?
   createdAt       DateTime @default(now())
 }
 
@@ -226,4 +253,11 @@ model ProductType {
   name          String   // ex: "Housse de couette"
   family        String   // "FLAT", "FITTED", "ENVELOPE"
   baseLaborTime Int      // Temps en minutes
+}
+
+model AtelierSettings {
+  id              String   @id @default("global") // Toujours "global" pour n'avoir qu'une ligne
+  marginRate      Float    @default(2.5)          // Multiplicateur de marge (ex: x2.5)
+  laborCostPerMin Float    @default(0.35)         // Coût de la minute de main-d'œuvre (ex: 0.35 €)
+  updatedAt       DateTime @updatedAt
 }

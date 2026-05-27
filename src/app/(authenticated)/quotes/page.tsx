@@ -7,10 +7,11 @@ import { createQuoteFromCalculator, validateQuote, deleteQuote } from '@/app/_ac
 const prisma = new PrismaClient()
 
 export default async function QuotesPage() {
-  const fabricsRaw = await prisma.fabric.findMany()
+  const fabricsRaw = await prisma.fabric.findMany({ where: { isArchived: false } }) // On exclut les archivés
+  const clients = await prisma.client.findMany({ orderBy: { name: 'asc' } }) // 🆕 On charge les clients
   const quotesRaw = await prisma.quote.findMany({
     where: { status: 'DRAFT' },
-    include: { fabric: true },
+    include: { fabric: true, client: true },
     orderBy: { createdAt: 'desc' }
   })
 
@@ -63,7 +64,14 @@ export default async function QuotesPage() {
                     <p className="text-sm text-slate-500 font-medium">
                       {quote.fabric?.name} — {quote.quantity}m
                     </p>
+                    <p className="text-sm text-slate-500 font-medium">
+                      👤 Client : <strong className="text-slate-700">{quote.client?.name || "Non spécifié"}</strong>
+                    </p>
+                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                      Matière : {quote.fabric?.name} — {quote.quantity.toFixed(1)}m
+                    </p>
                   </div>
+                  
                   
                   <div className="flex gap-3">
                     {/* Pour l'instant on utilise des formulaires simples pour les actions serveur */}
@@ -88,7 +96,10 @@ export default async function QuotesPage() {
 
       <div className="lg:col-span-6">
         <div className="sticky top-8">
-          <UniversalConfigurator fabrics={JSON.parse(JSON.stringify(fabrics))} />
+          <UniversalConfigurator 
+          fabrics={JSON.parse(JSON.stringify(fabrics))} 
+          clients={JSON.parse(JSON.stringify(clients))} 
+        />
         </div>
       </div> </div>
   )

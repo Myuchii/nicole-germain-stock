@@ -171,3 +171,58 @@ export async function receiveMerchandiseStock(formData: FormData) {
     return { success: false, error: "Erreur lors de la réception du lot" }
   }
 }
+
+// ==========================================
+// 🗑️ SUPPRESSION DE PRODUIT DU CATALOGUE
+// ==========================================
+export async function deleteProduct(id: string, type: 'PF' | 'MA') {
+  try {
+    if (type === 'PF') {
+      await prisma.finishedProduct.delete({ where: { id } })
+    } else {
+      await prisma.merchandise.delete({ where: { id } })
+    }
+    
+    revalidatePath('/stock-Boutique')
+    return { success: true }
+  } catch (e: any) {
+    console.error("Erreur deleteProduct:", e)
+    return { success: false, error: "Impossible de supprimer ce produit. " + (e.message || "") }
+  }
+}
+
+// ==========================================
+// ✏️ MODIFICATION DE PRODUIT (CATALOGUE)
+// ==========================================
+export async function updateProduct(formData: FormData) {
+  const id = formData.get('id') as string
+  const type = formData.get('type') as 'PF' | 'MA'
+  const name = formData.get('name') as string
+  const alertThreshold = parseInt(formData.get('alertThreshold') as string, 10) || 5
+  const sellingPriceHT = parseFloat(formData.get('sellingPriceHT') as string) || 0
+
+  try {
+    if (type === 'PF') {
+      const family = formData.get('family') as string
+      const dimensions = formData.get('dimensions') as string
+      
+      await prisma.finishedProduct.update({
+        where: { id },
+        data: { name, family, dimensions, alertThreshold, sellingPriceHT }
+      })
+    } else {
+      const category = formData.get('category') as string
+      
+      await prisma.merchandise.update({
+        where: { id },
+        data: { name, category, alertThreshold, sellingPriceHT }
+      })
+    }
+    
+    revalidatePath('/stock-Boutique')
+    return { success: true }
+  } catch (e: any) {
+    console.error("Erreur updateProduct:", e)
+    return { success: false, error: "Impossible de modifier ce produit. " + (e.message || "") }
+  }
+}
