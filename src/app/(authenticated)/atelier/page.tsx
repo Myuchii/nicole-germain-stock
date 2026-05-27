@@ -1,6 +1,9 @@
 import { prisma } from '@/lib/prisma'
 import { advanceProductionStep } from '@/app/_actions/atelier-actions'
 import { Clock, Scissors, Shirt, Package } from 'lucide-react'
+
+export const dynamic = 'force-dynamic'
+
 export default async function AtelierPage() {
   // On récupère les items dont le devis parent est validé (pas les brouillons)
   const items = await prisma.quoteItem.findMany({
