@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { CheckCircle } from 'lucide-react'
 import { OrderCard } from '@/components/OrderCard'
 
+export const dynamic = 'force-dynamic'
+
 const prisma = new PrismaClient()
 
 async function getOrders() {
