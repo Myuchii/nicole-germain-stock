@@ -35,10 +35,16 @@ export async function getClients() {
   })
 }
 
-// =========================================================================
-// 🆕 CRÉATION RAPIDE CLIENT ENRICHI AVEC LES BONS NOMS DE CHAMPS (SANS BILLING)
-// =========================================================================
-export async function createClientQuick(data: { name: string; address: string; zipCode: string; city: string }) {
+export async function createClientQuick(data: { 
+  name: string; 
+  address: string; 
+  zipCode: string; 
+  city: string;
+  email?: string;   // 🆕 Nouveau
+  phone?: string;   // 🆕 Nouveau
+  company?: string; // 🆕 Nouveau
+  country?: string;
+}) {
   try {
     if (!data.name || data.name.trim() === "") {
       return { success: false, error: "Le nom est obligatoire." }
@@ -47,10 +53,13 @@ export async function createClientQuick(data: { name: string; address: string; z
     const newClient = await prisma.client.create({
       data: { 
         name: data.name.trim(),
-        address: data.address.trim() || null,  // 🔍 C'est bien "address" tout court !
-        zipCode: data.zipCode.trim() || null,  // 🔍 C'est bien "zipCode" !
-        city: data.city.trim() || null,        // 🔍 C'est bien "city" !
-        country: "France"
+        address: data.address.trim() || null,  
+        zipCode: data.zipCode.trim() || null,  
+        city: data.city.trim() || null,        
+        email: data.email?.trim() || null,     // 🆕 Enregistrement
+        phone: data.phone?.trim() || null,     // 🆕 Enregistrement
+        company: data.company?.trim() || null, // 🆕 Enregistrement
+        country: data.country?.trim() || "france",
       }
     })
 

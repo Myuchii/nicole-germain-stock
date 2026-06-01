@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Plus, Search, User, Trash2, Building } from 'lucide-react'
+import { Plus, Search, User, Trash2, Building, ArrowRight } from 'lucide-react' // 🆕 Ajout de ArrowRight
 import { getClients, deleteClient } from '@/app/_actions/client-actions'
 import Link from 'next/link'
 
@@ -64,7 +64,8 @@ export default function ClientsPage() {
                     {c.company ? <Building size={20} /> : <User size={20} />}
                   </div>
                   <button 
-                    onClick={async () => {
+                    onClick={async (e) => {
+                      e.preventDefault(); // 🛡️ Évite de cliquer sur le lien par erreur
                       if (confirm(`Supprimer la fiche de ${c.name} ?`)) {
                         const res = await deleteClient(c.id)
                         if (!res.success) alert(res.error)
@@ -82,9 +83,9 @@ export default function ClientsPage() {
                   {c.company && <p className="text-sm text-indigo-800 font-bold tracking-wide uppercase">{c.company}</p>}
                 </div>
                 <div className="mt-4 space-y-1">
-                  <h3 className="font-serif font-bold text-slate-900 text-lg">{c.address}</h3>
-                  {c.zipCode && <p className="text-sm text-indigo-800 font-bold tracking-wide uppercase">{c.zipCode} {c.city}</p>}
-                  {c.country && <p className="text-sm text-indigo-800 font-bold tracking-wide uppercase">{c.country}</p>}
+                  <h3 className="font-serif font-bold text-slate-900 text-sm">{c.address}</h3>
+                  {c.zipCode && <p className="text-xs text-slate-500 uppercase">{c.zipCode} {c.city}</p>}
+                  {c.country && <p className="text-xs text-slate-500 uppercase">{c.country}</p>}
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-slate-50 text-sm space-y-1.5 font-medium text-slate-500">
@@ -92,6 +93,14 @@ export default function ClientsPage() {
                   {c.phone && <p>📞 {c.phone}</p>}
                 </div>
               </div>
+
+              {/* 🆕 BOUTON VERS L'HISTORIQUE CLIENT */}
+              <div className="mt-6 pt-4 border-t border-slate-50">
+                <Link href={`/clients/${c.id}`} className="w-full flex items-center justify-between px-4 py-2.5 bg-indigo-50 text-indigo-700 font-bold text-sm rounded-xl hover:bg-indigo-600 hover:text-white transition-colors">
+                  Voir le dossier client <ArrowRight size={16} />
+                </Link>
+              </div>
+
             </div>
           ))
         )}

@@ -3,7 +3,8 @@
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from 'next/cache'
 
-// 1. Lire les paramètres financiers globaux
+// --- 1. GESTION FINANCIÈRE GLOBALE ---
+
 export async function getAtelierSettings() {
   let settings = await prisma.atelierSettings.findUnique({ where: { id: "global" } })
   
@@ -19,55 +20,88 @@ export async function getAtelierSettings() {
   return settings
 }
 
-// 2. Mettre à jour les paramètres financiers
 export async function updateAtelierSettings(formData: FormData) {
   const marginRate = parseFloat(formData.get('marginRate') as string)
   const laborCostPerMin = parseFloat(formData.get('laborCostPerMin') as string)
 
   if (isNaN(marginRate) || isNaN(laborCostPerMin) || marginRate <= 0 || laborCostPerMin <= 0) {
-    return { success: false, error: "Valeurs invalides" }
+    return { success: false, error: "Valeurs invalides. Veuillez entrer des nombres positifs." }
   }
 
   try {
-    await prisma.atelierSettings.update({
+    // Utilisation de upsert pour éviter tout crash si la ligne venait à disparaître
+    await prisma.atelierSettings.upsert({
       where: { id: "global" },
-      data: { marginRate, laborCostPerMin }
+      update: { marginRate, laborCostPerMin },
+      create: { id: "global", marginRate, laborCostPerMin }
     })
-    revalidatePath('/parametres')
+    revalidatePath('/parametres') // Ajustez le chemin selon votre route réelle
     return { success: true }
   } catch (e: any) {
-    console.error(e)
+    console.error("Erreur updateAtelierSettings:", e)
     return { success: false, error: "Erreur lors de la sauvegarde financière" }
   }
 }
 
-// 3. 🆕 Lire tous les types de produits (Temps de confection)
 export async function getProductTypes() {
-  return await prisma.productType.findMany({
-    orderBy: { name: 'asc' }
-  })
+  try {
+    let types = await prisma.productType.findMany({
+      orderBy: { name: 'asc' }
+    })
+
+    // Si c'est vide, on insère un par un de manière très sécurisée
+    if (types.length === 0) {
+      console.log("🛠️ Base vide : Initialisation des types de produits...")
+      
+      const defaultTypes = [
+        { name: 'Drap Housse / Protège Matelas', family: 'FITTED', baseLaborTime: 30 },
+        { name: 'Housse de Couette / Taie', family: 'ENVELOPE', baseLaborTime: 45 },
+        { name: 'Drap Plat / Nappe', family: 'FLAT', baseLaborTime: 20 },
+        { name: 'Traversin', family: 'BOLSTER', baseLaborTime: 15 },
+        { name: 'Ouvrage Rond', family: 'ROUND', baseLaborTime: 60 },
+      ]
+
+      for (const t of defaultTypes) {
+        await prisma.productType.create({ data: t })
+      }
+
+      // On recharge la liste une fois l'insertion terminée
+      types = await prisma.productType.findMany({
+        orderBy: { name: 'asc' }
+      })
+      console.log("✅ Création des types réussie !")
+    }
+
+    return types
+
+  } catch (error) {
+    // S'il y a un crash, on l'attrape et on l'affiche EN ROUGE dans votre terminal VSCode/Terminal
+    console.error("❌ ERREUR FATALE LORS DE LA CRÉATION DES TYPES :", error)
+    return [] 
+  }
 }
 
-// 4. 🆕 Mettre à jour les temps de confection en masse
 export async function updateProductTypeTimes(formData: FormData) {
   try {
-    // On boucle sur toutes les entrées envoyées par le formulaire
     const entries = Array.from(formData.entries())
     
-    for (const [key, value] of entries) {
-      // Si la clé commence par type_ c'est un ID de ProductType
-      if (key.startsWith('type_')) {
+    // On utilise une transaction Prisma pour tout mettre à jour d'un coup de manière sécurisée
+    const updatePromises = entries
+      .filter(([key]) => key.startsWith('type_'))
+      .map(([key, value]) => {
         const id = key.replace('type_', '')
         const baseLaborTime = parseInt(value as string, 10)
 
         if (!isNaN(baseLaborTime) && baseLaborTime >= 0) {
-          await prisma.productType.update({
+          return prisma.productType.update({
             where: { id },
             data: { baseLaborTime }
           })
         }
-      }
-    }
+      })
+      .filter(Boolean) // Retire les undefined si une valeur était invalide
+
+    await prisma.$transaction(updatePromises as any)
 
     revalidatePath('/parametres')
     return { success: true }

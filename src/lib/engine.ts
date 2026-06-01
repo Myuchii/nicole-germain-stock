@@ -1,4 +1,5 @@
-// Types pour le moteur
+// src/lib/engine.ts
+
 type ProductFamily = 'FITTED' | 'ENVELOPE' | 'FLAT' | 'BOLSTER' | 'ROUND'
 type ProductRange = 'BASIQUE' | 'MONACO' | 'TPR' | 'TR'
 
@@ -11,159 +12,102 @@ interface Dimensions {
 
 export function calculateNGProduction(
   family: ProductFamily,
-  range: ProductRange,  // ← FIX : ProductRange au lieu de string
+  range: ProductRange,
   dimensions: Dimensions,
   fabrics: { mainPrice: number; secondaryPrice?: number; laize: number },
-  costPerMinute: number = 0.75,
+  // 🔗 LES VARIABLES QUI VIENNENT DES PARAMÈTRES DE NICOLE :
+  baseLaborMinutes: number, 
+  costPerMinute: number,
+  marginRate: number,
   debug = false
 ) {
   let linearNeeded = 0;
-  let labor = 0;
-  const laize = fabrics.laize; // en cm
+  
+  // ⏱️ 1. INITIALISATION DU TEMPS : On part du temps configuré par Nicole
+  let labor = baseLaborMinutes; 
+  const laize = fabrics.laize;
 
-const getOptimizedLinearMeters = (lengthCm: number, widthCm: number) => {
-  const laizeCm = laize;
-  
-  const sens1_ok = widthCm <= laizeCm;   // Largeur dans laize (Coupe = lengthCm)
-  const sens2_ok = lengthCm <= laizeCm;  // Longueur dans laize (Coupe = widthCm)
-  
-  // CAS 1 : Les deux sens sont possibles -> On prend le plus court !
-  if (sens1_ok && sens2_ok) {
-    const coupeSens1 = lengthCm;
-    const coupeSens2 = widthCm;
+  // --- ALGORITHME DE COUPE (Intact) ---
+  const getOptimizedLinearMeters = (lengthCm: number, widthCm: number) => {
+    const laizeCm = laize;
+    const sens1_ok = widthCm <= laizeCm;
+    const sens2_ok = lengthCm <= laizeCm;
     
-    if (coupeSens1 <= coupeSens2) {
-      return {
-        meters: coupeSens1 / 100 * 1.02,
-        panels: 1,
-        needsAssembly: false,
-        method: '1_panel_sens1_opti',
-        usedLength: lengthCm,
-        usedWidth: widthCm
-      };
-    } else {
-      return {
-        meters: coupeSens2 / 100 * 1.02,
-        panels: 1,
-        needsAssembly: false,
-        method: '1_panel_sens2_opti',
-        usedLength: widthCm,
-        usedWidth: lengthCm
-      };
+    if (sens1_ok && sens2_ok) {
+      const coupeSens1 = lengthCm;
+      const coupeSens2 = widthCm;
+      if (coupeSens1 <= coupeSens2) return { meters: coupeSens1 / 100 * 1.02, panels: 1, needsAssembly: false };
+      else return { meters: coupeSens2 / 100 * 1.02, panels: 1, needsAssembly: false };
     }
-  }
-  
-  // CAS 2 : Uniquement le sens 1 est possible
-  if (sens1_ok) {
-    return {
-      meters: lengthCm / 100 * 1.02,
-      panels: 1,
-      needsAssembly: false,
-      method: '1_panel_sens1_forced',
-      usedLength: lengthCm,
-      usedWidth: widthCm
-    };
-  }
-  
-  // CAS 3 : Uniquement le sens 2 est possible
-  if (sens2_ok) {
-    return {
-      meters: widthCm / 100 * 1.02,
-      panels: 1,
-      needsAssembly: false,
-      method: '1_panel_sens2_forced',
-      usedLength: widthCm,
-      usedWidth: lengthCm
-    };
-  }
-  
-  // CAS 4 : Aucun sens ne rentre -> Assemblage obligatoire
-  const panelsW = Math.ceil(Math.min(lengthCm, widthCm) / laizeCm); // Utilise le plus petit côté pour minimiser les panneaux
-  const linearM = Math.max(lengthCm, widthCm) / 100 * panelsW * 1.08;
-  
-  return {
-    meters: linearM,
-    panels: panelsW,
-    needsAssembly: true,
-    method: 'multi_panel',
-    usedLength: lengthCm,
-    usedWidth: widthCm
+    if (sens1_ok) return { meters: lengthCm / 100 * 1.02, panels: 1, needsAssembly: false };
+    if (sens2_ok) return { meters: widthCm / 100 * 1.02, panels: 1, needsAssembly: false };
+    
+    // Si ça ne rentre pas, on doit assembler plusieurs panneaux
+    const panelsW = Math.ceil(Math.min(lengthCm, widthCm) / laizeCm);
+    const linearM = Math.max(lengthCm, widthCm) / 100 * panelsW * 1.08;
+    return { meters: linearM, panels: panelsW, needsAssembly: true }; // 👈 needsAssembly = true !
   };
-};
-  // 🆗 FIN FONCTION 👆
 
-  // 🆕 CALCULS CORRIGÉS
+  // --- GÉOMÉTRIE SELON LA FAMILLE ---
   let opt;
   switch (family) {
-    case 'FITTED': {
+    case 'FITTED':
       const b = dimensions.bonnet || 15;
-      const totalL = dimensions.L + b * 2 + 10;
-      const totalW = dimensions.l + b * 2 + 10;
-      opt = getOptimizedLinearMeters(totalL, totalW);
+      opt = getOptimizedLinearMeters(dimensions.L + b * 2 + 10, dimensions.l + b * 2 + 10);
       break;
-    }
-
-    case 'ENVELOPE': {
-      // Face + Dos en 1 coupe optimisée
-      const totalL = dimensions.L * 2 + 20; // 420cm
-      const totalW = dimensions.l + 10;    // 210cm
-      opt = getOptimizedLinearMeters(totalL, totalW);
+    case 'ENVELOPE':
+      opt = getOptimizedLinearMeters(dimensions.L * 2 + 20, dimensions.l + 10);
       break;
-    }
-
-    case 'FLAT': {
-      const totalL = dimensions.L + 40;
-      const totalW = dimensions.l + 40;
-      opt = getOptimizedLinearMeters(totalL, totalW);
+    case 'FLAT':
+      opt = getOptimizedLinearMeters(dimensions.L + 40, dimensions.l + 40);
       break;
-    }
-
-    case 'BOLSTER': {
-      const circ = 90;
-      const long = dimensions.l + 30;
-      opt = getOptimizedLinearMeters(circ, long);
+    case 'BOLSTER':
+      opt = getOptimizedLinearMeters(90, dimensions.l + 30);
       break;
-    }
-
-    case 'ROUND': {
+    case 'ROUND':
       const d = (dimensions.diametre || 200) + 20;
-      linearNeeded = d / 100;
-      labor = 60;
-      opt = { meters: linearNeeded, needsAssembly: false };
+      opt = { meters: d / 100, needsAssembly: false };
       break;
-    }
   }
 
-  linearNeeded = opt.meters ?? 0;
-  labor = opt.needsAssembly ?? false ? labor + 25 : labor; // + assemblage
+  linearNeeded = opt?.meters ?? 0;
+  
+  // ⏱️ 2. AJOUT DES PÉNALITÉS TECHNIQUES AU TEMPS DE NICOLE
+  // S'il y a un assemblage de panneaux (car tissu pas assez large), on ajoute 25 min d'office
+  labor = opt?.needsAssembly ? labor + 25 : labor;
 
-  // Bicolore
   const isBicolor = ['MONACO'].includes(range);
   let mainMeters = linearNeeded;
   let secondaryMeters = 0;
+  
   if (isBicolor) {
     mainMeters *= 0.75;
     secondaryMeters = linearNeeded * 0.30;
-    labor += 20;
+    labor += 20; // +20 min pour gérer les deux couleurs
   }
 
-  // Gamme spéciale
-  if (range === 'TR' || range === 'TPR') labor += 15;
+  if (range === 'TR' || range === 'TPR') {
+    labor += 15; // +15 min pour la complexité des têtes articulées
+  }
 
+  // 💰 3. CALCUL FINANCIER FINAL
   const fabricCost = mainMeters * fabrics.mainPrice + secondaryMeters * (fabrics.secondaryPrice || 0);
+  
+  // On multiplie le temps total calculé par le coût minute de l'atelier
   const laborCost = labor * costPerMinute;
+  
+  // Coût de revient = Matière + Main d'œuvre
+  const costPriceHT = fabricCost + laborCost; 
+  
+  // Prix de vente = Coût de revient * Marge configurée par Nicole
+  const sellingPriceHT = costPriceHT * marginRate; 
 
   return {
     mainFabricMeters: Number(mainMeters.toFixed(2)),
     secondaryFabricMeters: Number(secondaryMeters.toFixed(2)),
     laborMinutes: Math.round(labor),
-    totalPriceHT: Number((fabricCost + laborCost).toFixed(2)),
-    debug: {
-      ...opt,
-      laize,
-      family,
-      range,
-      dimensions
-    }
+    costPriceHT: Number(costPriceHT.toFixed(2)),       
+    totalPriceHT: Number(sellingPriceHT.toFixed(2)),   
+    debug: { ...opt, laize, family, range, dimensions }
   };
 }

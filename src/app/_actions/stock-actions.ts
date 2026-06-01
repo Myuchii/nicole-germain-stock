@@ -200,7 +200,8 @@ export async function updateProduct(formData: FormData) {
   const name = formData.get('name') as string
   const alertThreshold = parseInt(formData.get('alertThreshold') as string, 10) || 5
   const sellingPriceHT = parseFloat(formData.get('sellingPriceHT') as string) || 0
-
+  const stockQuantity = parseInt(formData.get('stockQuantity') as string)
+  
   try {
     if (type === 'PF') {
       const family = formData.get('family') as string
@@ -224,5 +225,25 @@ export async function updateProduct(formData: FormData) {
   } catch (e: any) {
     console.error("Erreur updateProduct:", e)
     return { success: false, error: "Impossible de modifier ce produit. " + (e.message || "") }
+  }
+}
+
+// 🆕 MODIFIER MANUELLEMENT LA QUANTITÉ D'UN LOT
+export async function updateLotQuantity(lotId: string, type: 'PF' | 'MA', newQty: number) {
+  try {
+    if (type === 'PF') {
+      await prisma.finishedProductLot.update({
+        where: { id: lotId },
+        data: { quantityLeft: newQty }
+      })
+    } else {
+      await prisma.merchandiseLot.update({
+        where: { id: lotId },
+        data: { quantityLeft: newQty }
+      })
+    }
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: "Erreur lors de la mise à jour du lot" }
   }
 }

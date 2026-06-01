@@ -9,7 +9,12 @@ interface Product {
     name: string
     pricePerMeter: number
   }
-  dims: { L: number; l: number; bonnet?: number; diametre?: number }
+  dims: {
+    L: number
+    l: number
+    bonnet?: number
+    diametre?: number
+  }
   mainFabricMeters: number
   laborMinutes: number
   totalPriceHT: number
@@ -18,8 +23,8 @@ interface Product {
 interface QuotePDFData {
   id: string
   reference: string
-  totalPrice: number // C'est le total HT brut calculé par le moteur
-  isTTC?: boolean     // La case cochée dans ton configurateur
+  totalPrice: number
+  isTTC?: boolean
   discountPercent?: number
   products: Product[]
   client: {
@@ -28,67 +33,107 @@ interface QuotePDFData {
     zipCode?: string
     city?: string
     company?: string
+    email?: string // 🆕 Ajout de l'email
+    phone?: string // 🆕 Ajout du téléphone
   }
 }
 
-export async function generateQuotePDF(quoteData: QuotePDFData): Promise<Blob | null> {
-  if (typeof window === 'undefined') return null
+export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null> {
+  // 🛡️ SÉCURITÉ NEXT.JS : Si on est côté serveur pendant le pré-rendu, on n'exécute rien
+  if (typeof window === 'undefined') {
+    return null
+  }
 
   const doc = new jsPDF('p', 'mm', 'a4')
+
+  // --- 0. AJOUT DU LOGO ---
+  try {
+    const response = await fetch('/logo.png') 
+    const blob = await response.blob()
+    
+    const base64Logo = await new Promise<string>((resolve) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result as string)
+      reader.readAsDataURL(blob)
+    })
+    
+    doc.addImage(base64Logo, 'PNG', 20, 10, 40, 15)
+  } catch (error) {
+    console.warn("Impossible de charger le logo, génération du PDF sans logo.", error)
+  }
 
   // --- 1. EN-TÊTE DE L'ATELIER ---
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(16)
-  doc.text('ATELIER NICOLE GERMAIN', 20, 25)
+  doc.text('ATELIER NICOLE GERMAIN', 20, 35)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
-  doc.text('Confection de Linge de Lit sur Mesure', 20, 31)
-  doc.text('Email : contact@nicolegermain.com', 20, 36)
+  doc.text('Confection de Linge de Lit sur Mesure', 20, 41)
+  doc.text('Email : contact@nicolegermain.com', 20, 46)
 
   // --- 2. BLOC CLIENT COORDONNÉES ---
   const rightColumnX = 120
+  
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10)
-  doc.text('DESTINATAIRE :', rightColumnX, 25)
+  doc.text('DESTINATAIRE :', rightColumnX, 35)
   
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
-  const clientName = quoteData.client?.name || "Client non spécifié"
-  doc.text(clientName.toUpperCase(), rightColumnX, 31)
+  const clientName = data.client?.name || "Client non spécifié"
+  doc.text(clientName.toUpperCase(), rightColumnX, 41)
   
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
-  let currentClientY = 36
-  if (quoteData.client?.company) {
-    doc.text(quoteData.client.company, rightColumnX, currentClientY)
+  
+  let currentClientY = 46
+
+  if (data.client?.company) {
+    doc.text(data.client.company, rightColumnX, currentClientY)
     currentClientY += 5
   }
-  if (quoteData.client?.address) {
-    doc.text(quoteData.client.address, rightColumnX, currentClientY)
+  
+  if (data.client?.address) {
+    doc.text(data.client.address, rightColumnX, currentClientY)
     currentClientY += 5
   }
-  if (quoteData.client?.zipCode || quoteData.client?.city) {
-    const zip = quoteData.client.zipCode || ''
-    const city = quoteData.client.city || ''
+
+  if (data.client?.zipCode || data.client?.city) {
+    const zip = data.client.zipCode || ''
+    const city = data.client.city || ''
     doc.text(`${zip} ${city}`.trim(), rightColumnX, currentClientY)
+    currentClientY += 5 // 🆕 On n'oublie pas d'incrémenter pour la ligne suivante !
+  }
+
+  // 🆕 Affichage de l'email
+  if (data.client?.email) {
+    doc.text(`Email : ${data.client.email}`, rightColumnX, currentClientY)
+    currentClientY += 5
+  }
+
+  // 🆕 Affichage du téléphone
+  if (data.client?.phone) {
+    doc.text(`Tél : ${data.client.phone}`, rightColumnX, currentClientY)
+    currentClientY += 5
   }
 
   // --- 3. INFOS DOCUMENT ---
+  // 💡 J'ai décalé de +10 vers le bas (Y passe de 70 à 80) pour laisser la place aux nouvelles lignes client
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(13)
-  doc.text(`DEVIS CONFECTION SUR MESURE`, 20, 60)
+  doc.setFontSize(14)
+  doc.text(`DEVIS TECHNIQUE SUR MESURE`, 20, 80)
   
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
-  doc.text(`Référence : ${quoteData.reference}`, 20, 67)
-  doc.text(`Date d'émission : ${new Date().toLocaleDateString('fr-FR')}`, 20, 72)
+  doc.text(`Référence : ${data.reference}`, 20, 87)
+  doc.text(`Date d'émission : ${new Date().toLocaleDateString('fr-FR')}`, 20, 92)
 
   doc.setLineWidth(0.5)
   doc.setDrawColor(99, 102, 241)
-  doc.line(20, 77, 190, 77)
+  doc.line(20, 97, 190, 97)
 
-  // --- 4. TABLEAU DES PRODUITS (DYNAMIQUE HT / TTC) ---
-  const tableData = quoteData.products.map((product, index) => {
+  // --- 4. TABLEAU DES PRODUITS ---
+  const tableData = data.products.map((product, index) => {
     let labelFamily = product.family
     if (product.family === 'FITTED') labelFamily = 'Drap Housse'
     if (product.family === 'ENVELOPE') labelFamily = 'Housse Couette / Taie'
@@ -98,95 +143,66 @@ export async function generateQuotePDF(quoteData: QuotePDFData): Promise<Blob | 
 
     const dimensionsStr = product.family === 'ROUND' 
       ? `Diam. ${product.dims.diametre || 210}cm`
-      : `${product.dims.L}x${product.dims.l}${product.dims.bonnet ? ` (B${product.dims.bonnet})` : ''} cm`
-
-    // 🎯 Calcul du prix de la ligne selon l'option choisie
-    const itemPrice = quoteData.isTTC 
-      ? product.totalPriceHT * 1.20  // Application de la TVA 20%
-      : product.totalPriceHT
+      : `${product.dims.L}×${product.dims.l}${product.dims.bonnet ? ` (Bonnet ${product.dims.bonnet}cm)` : ''}`
 
     return [
       `${index + 1}`,
       `${labelFamily}\nGamme: ${product.range}`,
-      `${product.fabric.reference} - ${product.fabric.name}`,
+      `${product.fabric.reference}\n${product.fabric.name}`,
       dimensionsStr,
-      `${product.mainFabricMeters.toFixed(2)} m`,
+      `${product.mainFabricMeters.toFixed(1)} m`,
       `${product.laborMinutes} min`,
-      `${itemPrice.toFixed(2)} €`
+      `${product.totalPriceHT.toFixed(2)} €`
     ]
   })
 
-  // Le titre de la dernière colonne change selon l'état choisi
-  const lastColumnHeader = quoteData.isTTC ? 'PRIX TTC' : 'PRIX HT'
-
   autoTable(doc, {
-    startY: 84,
-    head: [['#', 'OUVRAGE', 'MATIÈRE', 'DIMENSIONS', 'MÉTRAGE', 'COUTURE', lastColumnHeader]],
+    startY: 104, // 💡 Décalé de +10 également pour suivre la ligne
+    head: [['#', 'OUVRAGE', 'MATIÈRE', 'DIMENSIONS', 'MÉTRAGE', 'COUTURE', 'MONTANT']],
     body: tableData,
-    theme: 'grid',
-    headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: 'bold', halign: 'center' },
-    columnStyles: { 0: { halign: 'center', fontStyle: 'bold' }, 6: { halign: 'right', fontStyle: 'bold' } },
-    styles: { fontSize: 10, cellPadding: 4, halign: 'left', valign: 'middle' }
+    theme: 'striped',
+    headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+    bodyStyles: { fontSize: 9, valign: 'middle' },
+    columnStyles: { 
+      0: { halign: 'center', cellWidth: 8 }, 
+      4: { halign: 'right' }, 
+      5: { halign: 'center' }, 
+      6: { halign: 'right', fontStyle: 'bold' } 
+    }
   })
 
-  // --- 5. ZONE DE TOTALISATION AVANCÉE (HT vs TTC) ---
+  // --- 5. ZONE DE TOTALISATION DYNAMIQUE ---
   // @ts-ignore
-  const finalY = doc.lastAutoTable.finalY + 12
-  const totalX = 130
-  
-  doc.setFontSize(10)
+  const finalY = doc.lastAutoTable.finalY + 10
+  const totalX = 140
+
   doc.setFont('helvetica', 'normal')
-  doc.setTextColor(0, 0, 0)
+  doc.setFontSize(10)
   
   let currentY = finalY
-
-  // Calcul de la réduction sur la base globale HT
-  let baseHT = quoteData.totalPrice
-  if (quoteData.discountPercent && quoteData.discountPercent > 0) {
-    const discountAmount = baseHT * (quoteData.discountPercent / 100)
-    doc.text(`Remise Commerciale (${quoteData.discountPercent}%) :`, totalX, currentY)
-    doc.text(`- ${discountAmount.toFixed(2)} €`, 190, currentY, { align: 'right' })
-    baseHT -= discountAmount
+  if (data.discountPercent && data.discountPercent > 0) {
+    doc.text(`Remise Commerciale (${data.discountPercent}%) :`, totalX, currentY)
+    doc.text(`- ${(data.totalPrice * (data.discountPercent / 100)).toFixed(2)} €`, 190, currentY, { align: 'right' })
     currentY += 6
   }
 
-  if (quoteData.isTTC) {
-    // 🏢 SI TTC : On affiche la ventilation comptable complète
-    const amountTVA = baseHT * 0.20
-    const totalTTC = baseHT + amountTVA
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(12)
+  const labelTotal = data.isTTC ? "TOTAL FACTURÉ TTC :" : "TOTAL NET HT :"
+  doc.text(labelTotal, totalX, currentY)
+  doc.text(`${data.totalPrice.toFixed(2)} €`, 190, currentY, { align: 'right' })
 
-    doc.text("TOTAL NET HT :", totalX, currentY)
-    doc.text(`${baseHT.toFixed(2)} €`, 190, currentY, { align: 'right' })
-    currentY += 6
-
-    doc.text("TVA (20%) :", totalX, currentY)
-    doc.text(`${amountTVA.toFixed(2)} €`, 190, currentY, { align: 'right' })
-    currentY += 7
-
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'bold')
-    doc.text("TOTAL FACTURÉ TTC :", totalX, currentY)
-    doc.text(`${totalTTC.toFixed(2)} €`, 190, currentY, { align: 'right' })
-  } else {
-    // 🛍️ SI HT (Professionnel) : Affichage classique
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'bold')
-    doc.text("TOTAL DEVIS NET HT :", totalX, currentY)
-    doc.text(`${baseHT.toFixed(2)} €`, 190, currentY, { align: 'right' })
-  }
-
-  // --- 6. PIED DE PAGE ---
+  // --- 6. FOOTER LÉGAL ---
   const pageHeight = doc.internal.pageSize.height
-  doc.setFontSize(10)
+  doc.setFontSize(9)
   doc.setFont('helvetica', 'italic')
-  doc.setTextColor(128, 128, 128)
-  doc.text('Atelier Nicole Germain - Confection sur mesure', 105, pageHeight - 20, { align: 'center' })
-  
-  // Modification dynamique de la mention légale en fonction du régime de TVA appliqué
-  const legalText = quoteData.isTTC 
-    ? 'Validité : 30 jours — Prix calculés avec TVA de 20% incluse.'
-    : 'Validité : 30 jours — TVA non applicable, art. 293B du CGI.'
-  doc.text(legalText, 105, pageHeight - 13, { align: 'center' })
+  doc.text('Validité de la proposition : 30 jours à compter de la date d\'émission', 105, pageHeight - 20, { align: 'center' })
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'italic')
+  doc.text('Les articles à dimensions spéciales ne sont ni repris, ni echangés', 105, pageHeight - 15, { align: 'center' })
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.text('Atelier Nicole Germain — Confectionné main en France', 105, pageHeight - 10, { align: 'center' })
 
   return doc.output('blob')
 }

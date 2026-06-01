@@ -20,23 +20,48 @@ interface Product {
   range: string
   fabricId: string
   dims: { L: number; l: number; bonnet: number; diametre: number }
+  isChute: boolean
+  customName?: string
+  customPriceHT?: number
+  customLaborMinutes?: number
+  customFabricMeters?: number // 🆕 Pour déduire du tissu sur un article libre !
 }
 
-// 🆕 Définition de l'interface Client manquante
 interface Client {
   id: string
   name: string
   company?: string
+  address?: string
+  zipCode?: string
+  city?: string
+  country?: string
+  email?: string
+  phone?: string
 }
 
-export default function UniversalConfigurator({ fabrics, clients: initialClients }: { fabrics: Fabric[], clients: Client[] }) {
+interface UniversalConfiguratorProps {
+  fabrics: Fabric[]
+  clients: Client[]
+  settings?: any       
+  productTypes?: any[] 
+  initialData?: any
+}
+
+export default function UniversalConfigurator({ 
+  fabrics, 
+  clients: initialClients, 
+  settings,       
+  productTypes    
+}: UniversalConfiguratorProps) {
+
   const [products, setProducts] = useState<Product[]>([
     {
       id: '1',
       family: 'FITTED',
       range: 'BASIQUE',
       fabricId: '',
-      dims: { L: 200, l: 160, bonnet: 30, diametre: 210 }
+      dims: { L: 200, l: 160, bonnet: 30, diametre: 210 },
+      isChute: false
     }
   ])
   const [isPending, setIsPending] = useState(false)
@@ -45,27 +70,46 @@ export default function UniversalConfigurator({ fabrics, clients: initialClients
   const [selectedClientId, setSelectedClientId] = useState('')
   const [clientSearch, setClientSearch] = useState('')
 
-  // 🆕 Déclaration des états pour l'adresse volante
   const [quickAddress, setQuickAddress] = useState('')
   const [quickZip, setQuickZip] = useState('')
   const [quickCity, setQuickCity] = useState('')
+  const [quickCountry, setQuickCountry] = useState('France')
+  const [quickEmail, setQuickEmail] = useState('')
+  const [quickPhone, setQuickPhone] = useState('')
+  const [quickCompany, setQuickCompany] = useState('')
 
   const [options, setOptions] = useState({
-    isChute: false,
     isTTC: false,
-    discountPercent: 0
+    discountPercent: 0,
+    dueDate: '',         
+    paymentMethod: ''    
   })
 
   const results = products.map(product => {
+    // Interception pour l'article sur-mesure (Manuel)
+    if (product.family === 'CUSTOM') {
+      return {
+        totalPriceHT: Number(product.customPriceHT) || 0,
+        mainFabricMeters: Number(product.customFabricMeters) || 0, // 🆕 On compte le tissu manuel !
+        laborMinutes: Number(product.customLaborMinutes) || 0
+      }
+    }
+
     const fabric = fabrics.find(f => f.id === product.fabricId)
+    const currentProductType = productTypes?.find(pt => pt.family === product.family)
+    const baseLaborMinutes = currentProductType ? currentProductType.baseLaborTime : 30 
+
     return calculateNGProduction(
        product.family as 'FITTED' | 'ENVELOPE' | 'FLAT' | 'BOLSTER' | 'ROUND',
        product.range as 'BASIQUE' | 'MONACO' | 'TPR' | 'TR',
        product.dims,
       { 
         mainPrice: Number(fabric?.pricePerMeter || 0),
-        laize: Number(fabric?.width || 300)
-      }
+        laize: Number(fabric?.width || 300) 
+      },
+      baseLaborMinutes,               
+      settings?.laborCostPerMin || 0.35, 
+      settings?.marginRate || 2.5        
     )
   })
 
@@ -77,7 +121,8 @@ export default function UniversalConfigurator({ fabrics, clients: initialClients
       family: 'FITTED',
       range: 'BASIQUE',
       fabricId: '',
-      dims: { L: 200, l: 160, bonnet: 30, diametre: 210 }
+      dims: { L: 200, l: 160, bonnet: 30, diametre: 210 },
+      isChute: false
     }])
   }
 
@@ -99,16 +144,20 @@ export default function UniversalConfigurator({ fabrics, clients: initialClients
 
   const handleSave = async () => {
     if (!selectedClientId) return alert("Attribue d'abord ce devis à un client (existant ou nouveau) !")
-    if (products.filter(p => p.fabricId).length === 0) return alert("Choisis un tissu au moins sur l'un de tes articles !")
+    
+    // Vérification de sécurité : un produit "classique" doit avoir un tissu
+    const invalidProducts = products.filter(p => p.family !== 'CUSTOM' && !p.fabricId)
+    if (invalidProducts.length > 0) return alert("Choisis un tissu pour tes articles classiques !")
     
     setIsPending(true)
     
     await createQuoteFromCalculator({ 
       products,
       clientId: selectedClientId,
-      isChute: options.isChute,
       isTTC: options.isTTC,
-      discountPercent: options.discountPercent
+      discountPercent: options.discountPercent,
+      dueDate: options.dueDate,          
+      paymentMethod: options.paymentMethod 
     })
     
     setIsPending(false)
@@ -122,33 +171,47 @@ export default function UniversalConfigurator({ fabrics, clients: initialClients
     c.name.toLowerCase().includes(clientSearch.toLowerCase())
   )
 
-// NOUVEAU : Générer PDF avec intégration du client associé
   const handleDownloadPDF = async () => {
-    // On récupère l'objet client complet sélectionné par Nicole
     const currentClient = clients.find(c => c.id === selectedClientId)
     if (!currentClient) {
       return alert("💡 Associe d'abord un client pour pouvoir éditer le PDF !")
     }
 
-    const validProducts = products
-      .filter(p => p.fabricId)
-      .map((p) => {
-        const fabric = fabrics.find(f => f.id === p.fabricId)!
-        const res = results[products.indexOf(p)]
+    const validProducts = products.map((p, idx) => {
+      const res = results[idx]
+      
+      if (p.family === 'CUSTOM') {
+        const customFabric = p.fabricId ? fabrics.find(f => f.id === p.fabricId) : null
         return {
-          family: p.family,
-          range: p.range,
+          family: p.customName || 'Article sur mesure', // 👈 Force le PDF à écrire TON nom en grand !
+          range: '', // On vide la gamme
           fabric: {
-            reference: fabric.reference,
-            name: fabric.name,
-            pricePerMeter: fabric.pricePerMeter
+            reference: customFabric ? customFabric.reference : '-',
+            name: customFabric ? `Tissu: ${customFabric.name}` : 'Sans tissu fourni',
+            pricePerMeter: customFabric ? customFabric.pricePerMeter : 0
           },
-          dims: p.dims,
+          dims: { L: 0, l: 0, bonnet: 0, diametre: 0 }, // 👈 On TUE les dimensions fantômes
           mainFabricMeters: res.mainFabricMeters,
           laborMinutes: res.laborMinutes,
           totalPriceHT: res.totalPriceHT
         }
-      })
+      }
+
+      const fabric = fabrics.find(f => f.id === p.fabricId)!
+      return {
+        family: p.family,
+        range: p.range,
+        fabric: {
+          reference: fabric.reference,
+          name: fabric.name,
+          pricePerMeter: fabric.pricePerMeter
+        },
+        dims: p.dims,
+        mainFabricMeters: res.mainFabricMeters,
+        laborMinutes: res.laborMinutes,
+        totalPriceHT: res.totalPriceHT
+      }
+    })
 
     const quoteData = {
       id: `DEV-${Date.now().toString().slice(-6)}`,
@@ -157,20 +220,20 @@ export default function UniversalConfigurator({ fabrics, clients: initialClients
       isTTC: options.isTTC,
       discountPercent: options.discountPercent,
       products: validProducts,
-      // 🆕 On injecte les données de notre client trouvé
       client: {
         name: currentClient.name,
         address: (currentClient as any).address,
         zipCode: (currentClient as any).zipCode,
         city: (currentClient as any).city,
-        company: (currentClient as any).company
+        country: (currentClient as any).country,
+        company: (currentClient as any).company,
+        email: (currentClient as any).email, 
+        phone: (currentClient as any).phone
       }
     }
 
-try {
+    try {
       const pdfBlob = await generateQuotePDF(quoteData)
-      
-      // Si la fonction a renvoyé null (sécurité SSR), on sort proprement
       if (!pdfBlob) return
 
       const pdfUrl = URL.createObjectURL(pdfBlob)
@@ -187,9 +250,10 @@ try {
     }
   }
 
+  const isSaveDisabled = isPending || products.some(p => p.family !== 'CUSTOM' && !p.fabricId)
+
   return (
     <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-2xl overflow-hidden">
-      {/* HEADER */}
       <div className="bg-slate-900 p-6 text-white flex items-center gap-3">
         <div className="p-3 bg-indigo-500 rounded-2xl">
           <Calculator size={24} />
@@ -202,7 +266,6 @@ try {
 
       <div className="p-8 space-y-8">
         
-        {/* 🆕 BLOC SÉCURISÉ : RECHERCHE OU CRÉATION CLIENT AVEC ADRESSE RAPIDE */}
         <div className="p-5 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">
           <label className="text-xs font-black text-slate-400 uppercase tracking-wider block">👤 Assignation du client</label>
           
@@ -232,11 +295,18 @@ try {
             )}
           </div>
 
-          {/* Formulaire d'adresse dynamique pour nouveau client */}
           {clientSearch && !selectedClientId && !clients.some(c => c.name.toLowerCase() === clientSearch.toLowerCase().trim()) && (
             <div className="p-4 bg-white rounded-2xl border border-slate-100 space-y-3 shadow-inner">
               <p className="text-[10px] font-black text-amber-600 uppercase tracking-wider">✨ Nouveau client détecté ! Remplir son adresse pour le PDF :</p>
               
+              <input 
+                type="text" 
+                placeholder="Nom de la société (Optionnel)" 
+                value={quickCompany}
+                onChange={(e) => setQuickCompany(e.target.value)}
+                className="w-full p-2.5 bg-slate-50 placeholder-slate-400 text-xs rounded-xl border-none focus:ring-1 focus:ring-indigo-500 font-medium"
+              />
+          
               <input 
                 type="text" 
                 placeholder="Rue et numéro (ex: 14 rue de la paix)" 
@@ -258,10 +328,34 @@ try {
                   placeholder="Ville" 
                   value={quickCity}
                   onChange={(e) => setQuickCity(e.target.value)}
-                  className="col-span-2 p-2.5 bg-slate-50 placeholder-slate-400 text-xs rounded-xl border-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                  className="p-2.5 bg-slate-50 placeholder-slate-400 text-xs rounded-xl border-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                />
+                <input 
+                  type="text" 
+                  placeholder="Pays" 
+                  value={quickCountry}
+                  onChange={(e) => setQuickCountry(e.target.value)}
+                  className="p-2.5 bg-slate-50 placeholder-slate-400 text-xs rounded-xl border-none focus:ring-1 focus:ring-indigo-500 font-medium text-center"
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-2">
+                <input 
+                  type="email" 
+                  placeholder="Email (Optionnel)" 
+                  value={quickEmail}
+                  onChange={(e) => setQuickEmail(e.target.value)}
+                  className="p-2.5 bg-slate-50 placeholder-slate-400 text-xs rounded-xl border-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                />
+                <input 
+                  type="text" 
+                  placeholder="Téléphone (Optionnel)" 
+                  value={quickPhone}
+                  onChange={(e) => setQuickPhone(e.target.value)}
+                  className="p-2.5 bg-slate-50 placeholder-slate-400 text-xs rounded-xl border-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                />
+              </div>
+          
               <button
                 type="button"
                 onClick={async () => {
@@ -273,9 +367,13 @@ try {
                     name: clientSearch,
                     address: quickAddress,
                     zipCode: quickZip,
-                    city: quickCity
+                    city: quickCity,
+                    country: quickCountry,
+                    email: quickEmail,       
+                    phone: quickPhone,       
+                    company: quickCompany    
                   })
-
+                
                   if (!res.success) alert(res.error)
                   else if (res.client){
                     alert(`✅ Client "${res.client.name}" créé avec son adresse !`)
@@ -285,6 +383,10 @@ try {
                     setQuickAddress('')
                     setQuickZip('')
                     setQuickCity('')
+                    setQuickCountry('France')
+                    setQuickEmail('')
+                    setQuickPhone('')
+                    setQuickCompany('')
                   }
                 }}
                 className="w-full py-3 bg-emerald-600 text-white font-black rounded-xl text-xs flex items-center justify-center gap-1.5 hover:bg-emerald-700 transition-all shadow-sm uppercase tracking-wider"
@@ -301,9 +403,7 @@ try {
           )}
         </div>
 
-        {/* PRODUITS */}
         {products.map((product) => {
-          const currentFabric = fabrics.find(f => f.id === product.fabricId)
           const res = results[products.indexOf(product)]
 
           return (
@@ -325,100 +425,174 @@ try {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                    <Layers size={16} /> Produit
-                  </label>
-                  <select 
-                    value={product.family}
-                    onChange={(e) => updateProduct(product.id, { family: e.target.value })} 
-                    className="w-full p-4 bg-slate-50 text-slate-700 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 font-medium outline-none"
-                  >
-                    <option value="FITTED">Drap Housse / Protège Matelas</option>
-                    <option value="ENVELOPE">Housse de Couette / Taie</option>
-                    <option value="FLAT">Drap Plat / Nappe</option>
-                    <option value="BOLSTER">Traversin</option>
-                    <option value="ROUND">Lit Rond / Couette Ronde</option>
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700">Gamme</label>
-                  <select 
-                    value={product.range}
-                    onChange={(e) => updateProduct(product.id, { range: e.target.value })} 
-                    className="w-full p-4 bg-slate-50 text-slate-700 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 font-medium outline-none"
-                  >
-                    <option value="BASIQUE">Standard / Basique</option>
-                    <option value="MONACO">Monaco (Bicolore)</option>
-                    <option value="TPR">TPR (Articulé)</option>
-                    <option value="TR">TR (Tête Relevable)</option>
-                  </select>
-                </div>
-              </div>
-
               <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700">Tissu à utiliser</label>
+                <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                  <Layers size={16} /> Type de confection
+                </label>
                 <select 
-                  value={product.fabricId}
-                  onChange={(e) => updateProduct(product.id, { fabricId: e.target.value })} 
-                  className="w-full p-4 bg-indigo-50 text-indigo-700 rounded-2xl border-none font-bold outline-none"
+                  value={product.family}
+                  onChange={(e) => updateProduct(product.id, { family: e.target.value })} 
+                  className="w-full p-4 bg-slate-50 text-slate-700 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 font-medium outline-none"
                 >
-                  <option value="">Sélectionner dans le stock...</option>
-                  {fabrics.map(f => (
-                    <option key={f.id} value={f.id}>{f.reference} - {f.name} ({Number(f.pricePerMeter).toFixed(2)}€/m)</option>
-                  ))}
+                  <option value="FITTED">Drap Housse / Protège Matelas</option>
+                  <option value="ENVELOPE">Housse de Couette / Taie</option>
+                  <option value="FLAT">Drap Plat / Nappe</option>
+                  <option value="BOLSTER">Traversin</option>
+                  <option value="ROUND">Lit Rond / Couette Ronde</option>
+                  <option value="CUSTOM" className="text-indigo-600 font-black">✨ Article Libre (Saisie manuelle)</option>
                 </select>
               </div>
 
-              <div className="p-6 bg-slate-50 rounded-3xl space-y-4">
-                <div className="flex items-center gap-2 text-slate-500 font-bold text-sm uppercase">
-                  <Ruler size={16} /> Dimensions (cm)
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                  {product.family !== 'ROUND' ? (
-                    <>
-                      <input 
-                        type="number" 
-                        value={product.dims.L} 
-                        onChange={(e) => updateDims(product.id, { ...product.dims, L: Number(e.target.value) })}
-                        placeholder="Long." 
-                        className="p-4 rounded-xl border-none text-center font-bold text-slate-400" 
-                      />
-                      <input 
-                        type="number" 
-                        value={product.dims.l} 
-                        onChange={(e) => updateDims(product.id, { ...product.dims, l: Number(e.target.value) })}
-                        placeholder="Larg." 
-                        className="p-4 rounded-xl border-none text-center font-bold text-slate-400" 
-                      />
-                      {product.family === 'FITTED' && (
-                        <input 
-                          type="number" 
-                          value={product.dims.bonnet} 
-                          onChange={(e) => updateDims(product.id, { ...product.dims, bonnet: Number(e.target.value) })}
-                          placeholder="Bonnet" 
-                          className="p-4 rounded-xl border-none text-center font-bold text-slate-400" 
-                        />
-                      )}
-                    </>
-                  ) : (
+              {product.family === 'CUSTOM' ? (
+                <div className="p-5 bg-white rounded-2xl shadow-sm border border-slate-100 space-y-4">
+                  <label className="text-sm font-bold text-slate-700">Création sur-mesure</label>
+                  <input 
+                    type="text" 
+                    placeholder="Nom de l'article (ex: Ourlet de rideau)" 
+                    value={product.customName || ''} 
+                    onChange={e => updateProduct(product.id, { customName: e.target.value })} 
+                    className="w-full p-4 rounded-xl bg-slate-50 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500" 
+                  />
+                  <div className="grid grid-cols-2 gap-4">
                     <input 
                       type="number" 
-                      value={product.dims.diametre} 
-                      onChange={(e) => updateDims(product.id, { ...product.dims, diametre: Number(e.target.value) })}
-                      placeholder="Diamètre" 
-                      className="col-span-3 p-4 rounded-xl border-none text-center font-bold" 
+                      placeholder="Prix de vente HT (€)" 
+                      value={product.customPriceHT || ''} 
+                      onChange={e => updateProduct(product.id, { customPriceHT: parseFloat(e.target.value) })} 
+                      className="w-full p-4 rounded-xl bg-slate-50 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500" 
                     />
-                  )}
+                    <input 
+                      type="number" 
+                      placeholder="Temps estimé (min)" 
+                      value={product.customLaborMinutes || ''} 
+                      onChange={e => updateProduct(product.id, { customLaborMinutes: parseInt(e.target.value) })} 
+                      className="w-full p-4 rounded-xl bg-slate-50 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500" 
+                    />
+                  </div>
+                  
+                  {/* 🆕 Le Tissu pour le Custom */}
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Tissu (Optionnel)</label>
+                      <select 
+                        value={product.fabricId}
+                        onChange={(e) => updateProduct(product.id, { fabricId: e.target.value })} 
+                        className="w-full p-4 rounded-xl bg-slate-50 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="">(Aucun tissu)</option>
+                        {fabrics.map(f => (
+                          <option key={f.id} value={f.id}>{f.reference} - {f.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Métrage déduit (m)</label>
+                      <input 
+                        type="number" 
+                        placeholder="Ex: 1.5" 
+                        step="0.1"
+                        disabled={!product.fabricId}
+                        value={product.customFabricMeters || ''} 
+                        onChange={e => updateProduct(product.id, { customFabricMeters: parseFloat(e.target.value) })} 
+                        className="w-full p-4 rounded-xl bg-slate-50 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50" 
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700">Gamme</label>
+                      <select 
+                        value={product.range}
+                        onChange={(e) => updateProduct(product.id, { range: e.target.value })} 
+                        className="w-full p-4 bg-slate-50 text-slate-700 rounded-2xl border-none focus:ring-2 focus:ring-indigo-500 font-medium outline-none"
+                      >
+                        <option value="BASIQUE">Standard / Basique</option>
+                        <option value="MONACO">Monaco (Bicolore)</option>
+                        <option value="TPR">TPR (Articulé)</option>
+                        <option value="TR">TR (Tête Relevable)</option>
+                      </select>
+                    </div>
 
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700">Tissu à utiliser</label>
+                      <select 
+                        value={product.fabricId}
+                        onChange={(e) => updateProduct(product.id, { fabricId: e.target.value })} 
+                        className="w-full p-4 bg-indigo-50 text-indigo-700 rounded-2xl border-none font-bold outline-none"
+                      >
+                        <option value="">Sélectionner dans le stock...</option>
+                        {fabrics.map(f => (
+                          <option key={f.id} value={f.id}>{f.reference} - {f.name} ({Number(f.pricePerMeter).toFixed(2)}€/m)</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="p-6 bg-slate-50 rounded-3xl space-y-4">
+                    <div className="flex items-center gap-2 text-slate-500 font-bold text-sm uppercase">
+                      <Ruler size={16} /> Dimensions (cm)
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      {product.family !== 'ROUND' ? (
+                        <>
+                          <input 
+                            type="number" 
+                            value={product.dims.L} 
+                            onChange={(e) => updateDims(product.id, { ...product.dims, L: Number(e.target.value) })}
+                            placeholder="Long." 
+                            className="p-4 rounded-xl border-none text-center font-bold text-slate-400" 
+                          />
+                          <input 
+                            type="number" 
+                            value={product.dims.l} 
+                            onChange={(e) => updateDims(product.id, { ...product.dims, l: Number(e.target.value) })}
+                            placeholder="Larg." 
+                            className="p-4 rounded-xl border-none text-center font-bold text-slate-400" 
+                          />
+                          {product.family === 'FITTED' && (
+                            <input 
+                              type="number" 
+                              value={product.dims.bonnet} 
+                              onChange={(e) => updateDims(product.id, { ...product.dims, bonnet: Number(e.target.value) })}
+                              placeholder="Bonnet" 
+                              className="p-4 rounded-xl border-none text-center font-bold text-slate-400" 
+                            />
+                          )}
+                        </>
+                      ) : (
+                        <input 
+                          type="number" 
+                          value={product.dims.diametre} 
+                          onChange={(e) => updateDims(product.id, { ...product.dims, diametre: Number(e.target.value) })}
+                          placeholder="Diamètre" 
+                          className="col-span-3 p-4 rounded-xl border-none text-center font-bold" 
+                        />
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* CHUTE : SEULEMENT SI UN TISSU EST SÉLECTIONNÉ */}
               {product.fabricId && (
-                <div className="p-4 bg-indigo-500/10 rounded-2xl border border-indigo-200 text-sm">
+                <label className="flex items-center gap-2 p-4 bg-amber-50 text-amber-700 rounded-2xl border border-amber-100 cursor-pointer w-max text-sm font-bold mt-4 hover:bg-amber-100 transition-colors">
+                  <input 
+                    type="checkbox" 
+                    checked={product.isChute || false} 
+                    onChange={e => updateProduct(product.id, { isChute: e.target.checked })} 
+                    className="rounded text-amber-600 focus:ring-amber-500 h-5 w-5" 
+                  />
+                  Cousu dans une chute (Stock de Tissu non déduit)
+                </label>
+              )}
+
+              {(product.family === 'CUSTOM' || product.fabricId) && (
+                <div className="p-4 bg-indigo-500/10 rounded-2xl border border-indigo-200 text-sm mt-4">
                   <div className="flex justify-between">
-                    <span className="font-bold text-indigo-800">{res.totalPriceHT.toFixed(2)} €</span>
+                    <span className="font-bold text-indigo-800">{res.totalPriceHT.toFixed(2)} € HT</span>
                     <span>{res.mainFabricMeters.toFixed(1)}m | {res.laborMinutes}min</span>
                   </div>
                 </div>
@@ -427,23 +601,34 @@ try {
           )
         })}
 
-        {/* OPTIONS DE FACTURATION */}
         <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100 space-y-4 my-6">
           <h4 className="font-bold text-sm text-slate-700 font-serif">Options de facturation</h4>
           
           <div className="grid grid-cols-2 gap-4">
-            <label className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100/50 transition-colors">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">À faire avant le :</label>
               <input 
-                type="checkbox" 
-                checked={options.isChute}
-                onChange={(e) => setOptions({ ...options, isChute: e.target.checked })}
-                className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                type="date" 
+                value={options.dueDate} 
+                onChange={e => setOptions({...options, dueDate: e.target.value})} 
+                className="w-full p-4 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500" 
               />
-              <div className="text-xs">
-                <p className="font-bold text-slate-800">Utiliser une chute</p>
-                <p className="text-slate-400">Stock non déduit</p>
-              </div>
-            </label>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Moyen de paiement :</label>
+              <select 
+                value={options.paymentMethod} 
+                onChange={e => setOptions({...options, paymentMethod: e.target.value})} 
+                className="w-full p-4 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">(En attente / Non défini)</option>
+                <option value="CB">Carte Bancaire</option>
+                <option value="VIREMENT">Virement</option>
+                <option value="CHEQUE">Chèque</option>
+                <option value="ESPECES">Espèces</option>
+              </select>
+            </div>
 
             <label className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100/50 transition-colors">
               <input 
@@ -457,26 +642,25 @@ try {
                 <p className="text-slate-400">Client particulier</p>
               </div>
             </label>
-          </div>
 
-          <div className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-100">
-            <span className="text-xs font-bold text-slate-700 whitespace-nowrap">Remise commerciale :</span>
-            <div className="relative flex-1">
-              <input 
-                type="number" 
-                value={options.discountPercent || ''}
-                onChange={(e) => setOptions({ ...options, discountPercent: parseFloat(e.target.value) || 0 })}
-                min="0" 
-                max="100" 
-                placeholder="0"
-                className="w-full text-right pr-7 py-1 px-2 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <span className="absolute right-3 top-1.5 text-xs font-bold text-slate-400">%</span>
+            <div className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-100">
+              <span className="text-xs font-bold text-slate-700 whitespace-nowrap">Remise commerciale :</span>
+              <div className="relative flex-1">
+                <input 
+                  type="number" 
+                  value={options.discountPercent || ''}
+                  onChange={(e) => setOptions({ ...options, discountPercent: parseFloat(e.target.value) || 0 })}
+                  min="0" 
+                  max="100" 
+                  placeholder="0"
+                  className="w-full text-right pr-7 py-1 px-2 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <span className="absolute right-3 top-1.5 text-xs font-bold text-slate-400">%</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* SECTION RÉSULTAT + BOUTONS */}
         <div className="p-6 bg-indigo-600 rounded-[2rem] text-white shadow-xl shadow-indigo-200">
           <div className="flex justify-between items-end mb-6">
             <div>
@@ -492,7 +676,7 @@ try {
           <div className="flex gap-3">
             <button 
               onClick={handleSave}
-              disabled={isPending || products.filter(p => p.fabricId).length === 0}
+              disabled={isSaveDisabled}
               className="flex-1 py-4 bg-white text-indigo-600 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-slate-100 transition-all disabled:opacity-50 shadow-lg"
             >
               <Save size={20} />
@@ -509,7 +693,7 @@ try {
 
             <button 
               onClick={handleDownloadPDF}
-              disabled={products.filter(p => p.fabricId).length === 0}
+              disabled={isSaveDisabled}
               className="px-6 py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-2xl font-bold flex items-center gap-2 hover:shadow-xl hover:scale-[1.02] transition-all disabled:opacity-50 shadow-lg"
             >
               <Download size={20} />

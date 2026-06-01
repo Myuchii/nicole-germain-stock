@@ -44,48 +44,63 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
 
   const doc = new jsPDF('p', 'mm', 'a4')
 
+  // --- 0. AJOUT DU LOGO ---
+  try {
+    // Récupération de l'image depuis le dossier public
+    const response = await fetch('/logo.png') 
+    const blob = await response.blob()
+    
+    // Conversion en Base64 requise par jsPDF
+    const base64Logo = await new Promise<string>((resolve) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result as string)
+      reader.readAsDataURL(blob)
+    })
+    
+    // Ajout au PDF : (données, format, X, Y, Largeur, Hauteur)
+    // Ajustez la largeur (40) et la hauteur (15) selon les proportions de votre logo
+    doc.addImage(base64Logo, 'PNG', 20, 10, 40, 15)
+  } catch (error) {
+    console.warn("Impossible de charger le logo, génération du PDF sans logo.", error)
+  }
+
   // --- 1. EN-TÊTE DE L'ATELIER ---
+  // J'ai descendu les positions Y (ex: de 25 à 35) pour laisser la place au logo au-dessus
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(16)
-  doc.text('ATELIER NICOLE GERMAIN', 20, 25)
+  doc.text('ATELIER NICOLE GERMAIN', 20, 35)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
-  doc.text('Confection de Linge de Lit sur Mesure', 20, 31)
-  doc.text('Email : contact@nicolegermain.com', 20, 36)
+  doc.text('Confection de Linge de Lit sur Mesure', 20, 41)
+  doc.text('Email : contact@nicolegermain.com', 20, 46)
 
-// --- 2. BLOC CLIENT COORDONNÉES (À droite, s'affiche TOUJOURS désormais) ---
+  // --- 2. BLOC CLIENT COORDONNÉES ---
   const rightColumnX = 120
   
-  // 1. On écrit toujours le titre "DESTINATAIRE"
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10)
-  doc.text('DESTINATAIRE :', rightColumnX, 25)
+  doc.text('DESTINATAIRE :', rightColumnX, 35) // Aligné avec le nom de l'atelier
   
-  // 2. On écrit toujours le nom du client (en majuscules)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
   const clientName = data.client?.name || "Client non spécifié"
-  doc.text(clientName.toUpperCase(), rightColumnX, 31)
+  doc.text(clientName.toUpperCase(), rightColumnX, 41)
   
-  // 3. On descend ligne par ligne pour le reste des infos s'il y en a
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   
-  let currentClientY = 36
+  let currentClientY = 46
 
-  // Affichage de l'entreprise si présente
   if (data.client?.company) {
     doc.text(data.client.company, rightColumnX, currentClientY)
     currentClientY += 5
   }
   
-  // Affichage de l'adresse de la rue si présente
   if (data.client?.address) {
     doc.text(data.client.address, rightColumnX, currentClientY)
     currentClientY += 5
   }
 
-  // Affichage du Code Postal + Ville si présents
   if (data.client?.zipCode || data.client?.city) {
     const zip = data.client.zipCode || ''
     const city = data.client.city || ''
@@ -93,18 +108,19 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
   }
 
   // --- 3. INFOS DOCUMENT ---
+  // Descendu également pour s'adapter au nouvel espacement
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text(`DEVIS TECHNIQUE SUR MESURE`, 20, 60)
+  doc.text(`DEVIS TECHNIQUE SUR MESURE`, 20, 70)
   
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
-  doc.text(`Référence : ${data.reference}`, 20, 67)
-  doc.text(`Date d'émission : ${new Date().toLocaleDateString('fr-FR')}`, 20, 72)
+  doc.text(`Référence : ${data.reference}`, 20, 77)
+  doc.text(`Date d'émission : ${new Date().toLocaleDateString('fr-FR')}`, 20, 82)
 
   doc.setLineWidth(0.5)
   doc.setDrawColor(99, 102, 241)
-  doc.line(20, 77, 190, 77)
+  doc.line(20, 87, 190, 87)
 
   // --- 4. TABLEAU DES PRODUITS ---
   const tableData = data.products.map((product, index) => {
@@ -131,7 +147,7 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
   })
 
   autoTable(doc, {
-    startY: 84,
+    startY: 94, // Descendu pour correspondre à la ligne de séparation
     head: [['#', 'OUVRAGE', 'MATIÈRE', 'DIMENSIONS', 'MÉTRAGE', 'COUTURE', 'MONTANT']],
     body: tableData,
     theme: 'striped',
@@ -171,8 +187,12 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
   doc.setFontSize(9)
   doc.setFont('helvetica', 'italic')
   doc.text('Validité de la proposition : 30 jours à compter de la date d\'émission', 105, pageHeight - 20, { align: 'center' })
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'italic')
+  doc.text('Les articles à dimensions spéciales ne sont ni repris, ni echangés', 105, pageHeight - 15, { align: 'center' })
   doc.setFontSize(8)
-  doc.text('Atelier Nicole Germain — Confectionné main en France', 105, pageHeight - 14, { align: 'center' })
+  doc.setFont('helvetica', 'normal')
+  doc.text('Atelier Nicole Germain — Confectionné main en France', 105, pageHeight - 10, { align: 'center' })
 
   return doc.output('blob')
 }

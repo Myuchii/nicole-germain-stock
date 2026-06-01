@@ -8,216 +8,16 @@ datasource db {
   url       = env("DATABASE_URL")
 }
 
-model Fabric {
-  id                    String          @id @default(cuid())
-  reference             String          @unique
-  name                  String
-  color                 String
-  unit                  UnitType
-  width                 Float?          @default(0)
-  stockMeters           Float?          @default(0)
-  stockUnits            Int?            @default(0)
-  alertThresholdMeters  Float?          
-  alertThresholdUnits   Int?
-  pricePerMeter         Float           @default(0)
-  pricePerUnit          Float           @default(0)
-  isArchived            Boolean         @default(false)
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
-
-  stockMovements        StockMovement[]
-  quotes                Quote[]
-  quoteItems            QuoteItem[]
+// 🆕 NOUVELLES ÉNUMÉRATIONS
+enum ItemLocation {
+  ATELIER
+  BOUTIQUE
 }
 
-
-model Quote {
-  id          String      @id @default(cuid())
-  reference   String      @unique @default(cuid())
-  status      QuoteStatus @default(DRAFT)
-  totalPrice  Float       @default(0)
-  quantity    Float       @default(0) // On l'ajoute pour corriger ton erreur d'action
-  createdAt   DateTime    @default(now())
-  validatedAt DateTime?
-  isTTC       Boolean     @default(false)
-  items       QuoteItem[]
-  userId      String?
-  user        User?       @relation(fields: [userId], references: [id])
-  fabricId    String
-  fabric      Fabric      @relation(fields: [fabricId], references: [id])
-  clientId    String
-  client      Client      @relation(fields: [clientId], references: [id])
-}
-
-model Client {
-  id          String   @id @default(cuid())
-  name        String   // Nom de la personne ou contact principal
-  company     String?  // Optionnel (B2B)
-  email       String?  // Optionnel
-  phone       String?  // Optionnel
-  
-  // 🆕 Nouveaux champs pour l'adresse de facturation
-  address     String?  // Rue / Numéro
-  zipCode     String?  // Code Postal
-  city        String?  // Ville
-  country     String?  @default("France") // Pays (par défaut France)
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  quotes      Quote[]  
-}
-
-model StockMovement {
-  id             String       @id @default(cuid())
-  fabricId       String
-  type           MovementType // ENTRY ou EXIT
-  quantityMeters Float?       
-  quantityUnits  Int?
-  reason         String
-  
-  // 🆕 AJOUT : Le prix d'achat spécifique pour ce lot / mouvement d'entrée
-  purchasePriceHT Float       @default(0) 
-
-  createdAt      DateTime     @default(now())
-  fabric         Fabric       @relation(fields: [fabricId], references: [id])
-}
-
-model QuoteItem {
-  id              String   @id @default(cuid())
-  quoteId         String
-  fabricId        String
-  quantityMeters  Float?   // Changé Decimal -> Float
-  quantityUnits   Int?
-  prodTimeMinutes Int
-  costPerMinute   Float    // Changé Decimal -> Float
-  sellingPrice    Float    // Changé Decimal -> Float
-  statusProduction String    @default("A_COUPER")
-  createdAt        DateTime @default(now())    // Entrée en coupe
-  startedCoutureAt DateTime?                   // Passage en couture (= Fin de la coupe)
-  finishedAt       DateTime?                   // Passage à Prêt (= Fin de la couture)
-  isChute          Boolean   @default(false)     // Case à cocher "Chute"
-  discountPercent  Float     @default(0.0)       // Pour les promos
-  quote  Quote  @relation(fields: [quoteId], references: [id])
-  fabric Fabric @relation(fields: [fabricId], references: [id])
-}
-
-// ② STOCK PRODUITS FINIS (Confection Maison)
-model FinishedProduct {
-  id              String   @id @default(cuid())
-  reference       String   @unique
-  name            String
-  family          String   // FITTED, ENVELOPE, FLAT, etc.
-  dimensions      String   // Ex: "140x190x30" ou "220x240"
-  stockQuantity   Int      @default(0)
-  alertThreshold  Int      @default(5)     // 🚨 Seuil d'alerte configuré par Nicole
-  sellingPriceHT  Float    // Prix de vente habituel
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  lots FinishedProductLot[]
-}
-
-model FinishedProductLot {
-  id                 String          @id @default(cuid())
-  finishedProductId  String
-  quantityManufactured Int           // Combien Nicole en a cousu ce jour-là
-  quantityLeft       Int             // Ce qu'il reste à vendre de cette fournée
-  sellingPriceHT     Float           // 📈 Prix de vente fixé pour CETTE production
-  createdAt          DateTime        @default(now())
-
-  finishedProduct    FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
-}
-
-model SaleLog {
-  id              String   @id @default(cuid())
-  referenceItem   String
-  name            String
-  type            String
-  quantitySold    Int
-  totalPriceHT    Float
-  paymentMethod   String
-  isTTC           Boolean  @default(false) // 🆕 Vente particulier (TTC)
-  totalPriceTTC   Float    @default(0)     // 🆕 Montant final payé avec TVA
-  ticketId      String?
-  createdAt       DateTime @default(now())
-}
-
-// Modification du modèle ③ pour refléter les lots
-model Merchandise {
-  id              String           @id @default(cuid())
-  reference       String           @unique
-  name            String
-  category        String
-  alertThreshold  Int              @default(3)
-  sellingPriceHT  Float            // Le prix de revente en boutique (unique)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  
-  // 🆕 Liaison vers les lots d'achats différents
-  lots            MerchandiseLot[]
-}
-
-model MerchandiseLot {
-  id              String      @id @default(cuid())
-  merchandiseId   String
-  quantityBought  Int
-  quantityLeft    Int
-  purchasePriceHT Float       // 💰 Prix auquel tu l'as acheté
-  sellingPriceHT  Float       @default(0) // 📈 Prix auquel tu as décidé de le vendre LE JOUR J
-  createdAt       DateTime    @default(now())
-
-  merchandise     Merchandise @relation(fields: [merchandiseId], references: [id], onDelete: Cascade)
-}
-
-model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
-  password      String?
-  role          UserRole  @default(USER)
-  createdAt     DateTime  @default(now())
-
-  quotes Quote[]
-  accounts Account[]
-  sessions Session[]
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String?
-  session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
+enum ReturnReason {
+  CLIENT_ERROR       // Erreur client ou changement d'avis
+  NG_ERROR           // Défaut ou erreur de l'atelier
+  DELIVERY_FAIL      // Retour colis involontaire
 }
 
 enum UnitType {
@@ -241,23 +41,306 @@ enum UserRole {
   ADMIN
 }
 
+// ==========================================
+// 1. TISSUS ET ACCESSOIRES
+// ==========================================
+
+model Fabric {
+  id                    String          @id @default(cuid())
+  reference             String          @unique
+  name                  String
+  color                 String
+  unit                  UnitType
+  width                 Float?          @default(0)
+  stockMeters           Float?          @default(0) // Gardé comme cache global
+  stockUnits            Int?            @default(0) // Gardé comme cache global
+  alertThresholdMeters  Float?          
+  alertThresholdUnits   Int?
+  pricePerMeter         Float           @default(0)
+  pricePerUnit          Float           @default(0)
+  isArchived            Boolean         @default(false)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  stockMovements        StockMovement[]
+  quotes                Quote[]
+  quoteItems            QuoteItem[]
+  lots                  FabricLot[]     // 🆕 Lots de tissus (valeur absolue)
+}
+
+// 🆕 NOUVEAU : Lots pour le calcul de la valeur absolue des Tissus
+model FabricLot {
+  id               String       @id @default(cuid())
+  fabricId         String
+  quantityBought   Float        // Quantité initiale du rouleau
+  quantityLeft     Float        // Quantité restante
+  purchasePriceHT  Float        // Prix d'achat réel de ce lot
+  location         ItemLocation @default(ATELIER) // 🆕 Localisation Atelier vs Boutique
+  createdAt        DateTime     @default(now())
+
+  fabric           Fabric       @relation(fields: [fabricId], references: [id], onDelete: Cascade)
+}
+
+// 🆕 NOUVEAU : Table pour les Accessoires (Fils, Zips, Boutons...)
+model Accessory {
+  id               String         @id @default(cuid())
+  reference        String         @unique
+  name             String
+  category         String         // ex: "Fermeture Éclair", "Bobine de fil"
+  stockQuantity    Float          @default(0)
+  unit             UnitType       @default(UNIT)
+  alertThreshold   Float          @default(10)
+  pricePerUnit     Float          @default(0)
+  isArchived       Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  lots             AccessoryLot[]
+  quoteItems       QuoteItem[]
+}
+
+model AccessoryLot {
+  id               String       @id @default(cuid())
+  accessoryId      String
+  quantityBought   Float
+  quantityLeft     Float
+  purchasePriceHT  Float
+  location         ItemLocation @default(ATELIER)
+  createdAt        DateTime     @default(now())
+
+  accessory        Accessory    @relation(fields: [accessoryId], references: [id], onDelete: Cascade)
+}
+
+model StockMovement {
+  id               String       @id @default(cuid())
+  fabricId         String
+  type             MovementType 
+  quantityMeters   Float?        
+  quantityUnits    Int?
+  reason           String
+  purchasePriceHT  Float        @default(0) 
+
+  createdAt        DateTime     @default(now())
+  fabric           Fabric       @relation(fields: [fabricId], references: [id])
+}
+
+// ==========================================
+// 2. CRM & DEVIS (COMMANDES)
+// ==========================================
+
+model Client {
+  id          String   @id @default(cuid())
+  name        String   
+  company     String?  
+  email       String?  
+  phone       String?  
+  address     String?  
+  zipCode     String?  
+  city        String?  
+  country     String?  @default("France") 
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  quotes      Quote[]  
+}
+
+model Quote {
+  id            String        @id @default(cuid())
+  reference     String        @unique @default(cuid())
+  status        QuoteStatus   @default(DRAFT)
+  totalPrice    Float         @default(0)
+  quantity      Float         @default(0) 
+  createdAt     DateTime      @default(now())
+  validatedAt   DateTime?
+  
+  // 🆕 Nouveaux champs pour la Vente et les Délais
+  dueDate       DateTime?     // "À faire avant le..."
+  returnReason  ReturnReason? // Motif en cas de retour colis
+  taxRate       Float         @default(20.0) // TVA par défaut (20%)
+  isTaxExempt   Boolean       @default(false) // Pour exonérer les Pros
+  isTTC         Boolean       @default(false)
+  paymentMethod String?       // "CB", "VIREMENT", "CHEQUE", "ESPECES"
+  products      Json?
+  
+  userId        String?
+  user          User?         @relation(fields: [userId], references: [id])
+  fabricId      String
+  fabric        Fabric        @relation(fields: [fabricId], references: [id])
+  clientId      String
+  client        Client        @relation(fields: [clientId], references: [id])
+  items         QuoteItem[]
+}
+
+model QuoteItem {
+  id               String    @id @default(cuid())
+  quoteId          String
+  
+  // 🆕 Modifications : Le tissu devient optionnel pour permettre la saisie manuelle
+  fabricId         String?   
+  accessoryId      String?   // Si l'article est un accessoire
+  
+  // 🆕 Articles manuels (Saisie libre post-devis ou article spécial)
+  customName       String?   // Nom forcé à la main
+  customMargin     Float?    // Marge forcée à la main
+  customPriceHT    Float?    // Prix forcé à la main
+
+  quantityMeters   Float?    
+  quantityUnits    Int?
+  prodTimeMinutes  Int
+  costPerMinute    Float     
+  sellingPrice     Float     
+  statusProduction String    @default("A_COUPER")
+  createdAt        DateTime  @default(now())    
+  startedCoutureAt DateTime?                    
+  finishedAt       DateTime?                    
+  isChute          Boolean   @default(false)      
+  discountPercent  Float     @default(0.0)        
+
+  quote            Quote      @relation(fields: [quoteId], references: [id])
+  fabric           Fabric?    @relation(fields: [fabricId], references: [id]) // Devenu optionnel
+  accessory        Accessory? @relation(fields: [accessoryId], references: [id]) // Lien vers l'accessoire
+}
+
+// ==========================================
+// 3. BOUTIQUE (PRODUITS FINIS ET MARCHANDISES)
+// ==========================================
+
+model FinishedProduct {
+  id              String   @id @default(cuid())
+  reference       String   @unique
+  name            String
+  family          String   
+  dimensions      String   
+  stockQuantity   Int      @default(0)
+  alertThreshold  Int      @default(5)     
+  sellingPriceHT  Float    
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  lots FinishedProductLot[]
+}
+
+model FinishedProductLot {
+  id                   String          @id @default(cuid())
+  finishedProductId    String
+  quantityManufactured Int             
+  quantityLeft         Int             
+  sellingPriceHT       Float           
+  createdAt            DateTime        @default(now())
+
+  finishedProduct      FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
+}
+
+model Merchandise {
+  id              String   @id @default(cuid())
+  reference       String   @unique
+  name            String
+  category        String
+  alertThreshold  Int      @default(3)
+  sellingPriceHT  Float    
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  lots            MerchandiseLot[]
+}
+
+model MerchandiseLot {
+  id               String       @id @default(cuid())
+  merchandiseId    String
+  quantityBought   Int
+  quantityLeft     Int
+  purchasePriceHT  Float        
+  sellingPriceHT   Float        @default(0) 
+  createdAt        DateTime     @default(now())
+
+  merchandise      Merchandise  @relation(fields: [merchandiseId], references: [id], onDelete: Cascade)
+}
+
+model SaleLog {
+  id             String   @id @default(cuid())
+  referenceItem  String
+  name           String
+  type           String
+  quantitySold   Int
+  unitPriceHT      Float?   @default(0) // 🆕 Le prix unitaire de base
+  discountPercent  Float?   @default(0) // 🆕 La remise appliquée sur ce ticket
+  totalPriceHT   Float
+  paymentMethod  String
+  taxRate        Float    @default(20.0)  // 🆕 TVA applicable sur le ticket
+  isTaxExempt    Boolean  @default(false) // 🆕 Vente sans TVA
+  isTTC          Boolean  @default(false) 
+  totalPriceTTC  Float    @default(0)      
+  ticketId       String?
+  createdAt      DateTime @default(now())
+}
+
+// ==========================================
+// 4. SYSTÈME ET PARAMÈTRES
+// ==========================================
+
 model Range {
   id            String   @id @default(cuid())
-  name          String   // ex: "Monaco", "Antibes"
+  name          String   
   isBicolor     Boolean  @default(false)
-  pricePremium  Float    @default(0) // Supplément de prix
+  pricePremium  Float    @default(0) 
 }
 
 model ProductType {
   id            String   @id @default(cuid())
-  name          String   // ex: "Housse de couette"
-  family        String   // "FLAT", "FITTED", "ENVELOPE"
-  baseLaborTime Int      // Temps en minutes
+  name          String   
+  family        String   
+  baseLaborTime Int      
 }
 
 model AtelierSettings {
-  id              String   @id @default("global") // Toujours "global" pour n'avoir qu'une ligne
-  marginRate      Float    @default(2.5)          // Multiplicateur de marge (ex: x2.5)
-  laborCostPerMin Float    @default(0.35)         // Coût de la minute de main-d'œuvre (ex: 0.35 €)
+  id              String   @id @default("global") 
+  marginRate      Float    @default(2.5)          
+  laborCostPerMin Float    @default(0.35)         
   updatedAt       DateTime @updatedAt
+}
+
+// AUTHENTIFICATION NEXT-AUTH
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now())
+  quotes        Quote[]
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  @@unique([identifier, token])
 }
