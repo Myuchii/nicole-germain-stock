@@ -54,7 +54,22 @@ export async function createFinishedProduct(formData: FormData) {
   const reference = formData.get('reference') as string
   const name = formData.get('name') as string
   const family = formData.get('family') as string
-  const dimensions = formData.get('dimensions') as string
+  // Récupération des dimensions selon la famille
+    let dimensionsStr = "Standard"
+    
+    if (family === 'ROUND') {
+      const diam = formData.get('diametre')
+      dimensionsStr = `DIAM-${diam}`
+    } else {
+      const L = formData.get('L')
+      const l = formData.get('l')
+      const bonnet = formData.get('bonnet')
+      
+      dimensionsStr = `${L}x${l}`
+      if (bonnet && bonnet !== "0" && family === 'FITTED') {
+        dimensionsStr += `-B${bonnet}`
+      }
+    }
   const stockQuantity = parseInt(formData.get('stockQuantity') as string, 10) || 0
   const alertThreshold = parseInt(formData.get('alertThreshold') as string, 10) || 5
   const sellingPriceHT = parseFloat(formData.get('sellingPriceHT') as string) || 0
@@ -64,7 +79,15 @@ export async function createFinishedProduct(formData: FormData) {
 
     if (!product) {
       product = await prisma.finishedProduct.create({
-        data: { reference, name, family, dimensions, alertThreshold, sellingPriceHT } // On ne met plus le stock direct ici
+        data: {
+        reference,
+        name,
+        family, // 👈 On enregistre la VRAIE famille technique (FITTED, ROUND...)
+        dimensions: dimensionsStr, // 👈 On enregistre la VRAIE dimension formatée
+        stockQuantity,
+        alertThreshold,
+        sellingPriceHT
+      }
       })
     } else {
       await prisma.finishedProduct.update({

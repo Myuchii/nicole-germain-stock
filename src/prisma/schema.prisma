@@ -33,6 +33,8 @@ enum MovementType {
 enum QuoteStatus {
   DRAFT
   VALIDATED
+  DELIVERED     // 🆕 Colis envoyé / Produit remis
+  ARCHIVED
   CANCELLED
 }
 
@@ -214,6 +216,7 @@ model FinishedProduct {
   alertThreshold  Int      @default(5)     
   sellingPriceHT  Float    
   createdAt       DateTime @default(now())
+  location             ItemLocation    @default(BOUTIQUE)
   updatedAt       DateTime @updatedAt
 
   lots FinishedProductLot[]
@@ -224,7 +227,8 @@ model FinishedProductLot {
   finishedProductId    String
   quantityManufactured Int             
   quantityLeft         Int             
-  sellingPriceHT       Float           
+  sellingPriceHT       Float
+  location         ItemLocation @default(BOUTIQUE)           
   createdAt            DateTime        @default(now())
 
   finishedProduct      FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
@@ -249,7 +253,8 @@ model MerchandiseLot {
   quantityBought   Int
   quantityLeft     Int
   purchasePriceHT  Float        
-  sellingPriceHT   Float        @default(0) 
+  sellingPriceHT   Float        @default(0)
+  location         ItemLocation @default(BOUTIQUE)
   createdAt        DateTime     @default(now())
 
   merchandise      Merchandise  @relation(fields: [merchandiseId], references: [id], onDelete: Cascade)
@@ -292,10 +297,11 @@ model ProductType {
 }
 
 model AtelierSettings {
-  id              String   @id @default("global") 
-  marginRate      Float    @default(2.5)          
-  laborCostPerMin Float    @default(0.35)         
-  updatedAt       DateTime @updatedAt
+  id              String @id @default("global")
+  marginRate      Float
+  laborCostPerMin Float
+  auditQuota      Int    @default(10) // 10 pièces
+  auditPeriod     Int    @default(12) // par 12 mois
 }
 
 // AUTHENTIFICATION NEXT-AUTH

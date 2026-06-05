@@ -171,38 +171,51 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
     }
   })
 
-  // --- 5. ZONE DE TOTALISATION DYNAMIQUE ---
+// --- 5. ZONE DE TOTALISATION DYNAMIQUE ---
   // @ts-ignore
   const finalY = doc.lastAutoTable.finalY + 10
-  const totalX = 140
+  
+  // 💡 On recule le texte à 115 au lieu de 135 pour laisser respirer le TTC !
+  const totalX = 115 
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   
   let currentY = finalY
+  let baseTotalHT = data.totalPrice
+  let discountAmount = 0
+
+  // 1. Calcul et affichage de la remise
   if (data.discountPercent && data.discountPercent > 0) {
+    discountAmount = baseTotalHT * (data.discountPercent / 100)
     doc.text(`Remise Commerciale (${data.discountPercent}%) :`, totalX, currentY)
-    doc.text(`- ${(data.totalPrice * (data.discountPercent / 100)).toFixed(2)} €`, 190, currentY, { align: 'right' })
+    doc.text(`- ${discountAmount.toFixed(2)} €`, 190, currentY, { align: 'right' })
     currentY += 6
   }
 
+  let netHT = baseTotalHT - discountAmount
+
+  // 2. Ligne HT
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(12)
-  const labelTotal = data.isTTC ? "TOTAL FACTURÉ TTC :" : "TOTAL NET HT :"
-  doc.text(labelTotal, totalX, currentY)
-  doc.text(`${data.totalPrice.toFixed(2)} €`, 190, currentY, { align: 'right' })
+  doc.text("TOTAL NET HT :", totalX, currentY)
+  doc.text(`${netHT.toFixed(2)} €`, 190, currentY, { align: 'right' })
+  currentY += 6
 
-  // --- 6. FOOTER LÉGAL ---
-  const pageHeight = doc.internal.pageSize.height
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'italic')
-  doc.text('Validité de la proposition : 30 jours à compter de la date d\'émission', 105, pageHeight - 20, { align: 'center' })
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'italic')
-  doc.text('Les articles à dimensions spéciales ne sont ni repris, ni echangés', 105, pageHeight - 15, { align: 'center' })
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'normal')
-  doc.text('Atelier Nicole Germain — Confectionné main en France', 105, pageHeight - 10, { align: 'center' })
+  // 3. Calcul de la TVA et TTC
+  if (data.isTTC) {
+    const tvaAmount = netHT * 0.20
+    const totalTTC = netHT + tvaAmount
 
+    doc.setFont('helvetica', 'normal')
+    doc.text("TVA (20%) :", totalX, currentY)
+    doc.text(`${tvaAmount.toFixed(2)} €`, 190, currentY, { align: 'right' })
+    currentY += 6
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(12) // La police grossit ici...
+    // ...mais grâce au X=115, ça ne touchera plus le prix !
+    doc.text("TOTAL FACTURÉ TTC :", totalX, currentY)
+    doc.text(`${totalTTC.toFixed(2)} €`, 190, currentY, { align: 'right' })
+  }
   return doc.output('blob')
 }

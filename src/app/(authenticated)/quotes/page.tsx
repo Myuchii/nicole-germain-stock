@@ -1,7 +1,8 @@
 // app/(authenticated)/quotes/page.tsx
 import { PrismaClient } from '@prisma/client'
+import Link from 'next/link'
 import UniversalConfigurator from '@/components/UniversalConfigurator'
-import { FileText, Check, Trash2, Building2, MapPin } from 'lucide-react' // 🆕 Ajout de MapPin
+import { FileText, Check, Trash2, Building2, MapPin, Edit } from 'lucide-react'
 import { validateQuote, deleteQuote } from '@/app/_actions/quote-actions'
 import { getAtelierSettings, getProductTypes } from '@/app/_actions/settings-actions' 
 
@@ -90,6 +91,13 @@ export default async function QuotesPage() {
                   </div>
                   
                   <div className="flex gap-3">
+                    {/* 🆕 LE BOUTON MODIFIER */}
+                    <Link href={`/quotes/edit/${quote.id}`}>
+                      <button className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all">
+                        <Edit size={20} />
+                      </button>
+                    </Link>
+
                     <form action={async () => { 'use server'; await validateQuote(quote.id); }}>
                       <button className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl hover:bg-emerald-600 hover:text-white transition-all">
                         <Check size={20} />

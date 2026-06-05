@@ -1,8 +1,12 @@
 "use server"
 
-import { prisma } from "@/lib/prisma" // On utilise toujours celui-là
+import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
+
+// ==========================================
+// 🧵 1. GESTION DES TISSUS
+// ==========================================
 
 export async function createOrUpdateFabric(formData: FormData) {
   const reference = formData.get('reference') as string
@@ -13,15 +17,17 @@ export async function createOrUpdateFabric(formData: FormData) {
   const width = parseFloat(formData.get('width') as string) || 0
   const addedQty = parseFloat(formData.get('stock') as string) || 0
   const newPrice = parseFloat(formData.get('price') as string) || 0
-  
-  // 🆕 On récupère le seuil d'alerte tapé par Nicole
   const alertThreshold = parseFloat(formData.get('alertThreshold') as string) || 5
+  const location = (formData.get('location') as 'ATELIER' | 'BOUTIQUE') || 'ATELIER'
+
+  let fabricId = ""
 
   const existingFabric = await prisma.fabric.findUnique({
     where: { reference }
   })
 
   if (existingFabric) {
+    fabricId = existingFabric.id
     const currentStock = unit === 'METER' ? (Number(existingFabric.stockMeters) || 0) : (Number(existingFabric.stockUnits) || 0)
     const oldPrice = unit === 'METER' ? (Number(existingFabric.pricePerMeter) || 0) : (Number(existingFabric.pricePerUnit) || 0)
     const totalStock = currentStock + addedQty
@@ -43,7 +49,7 @@ export async function createOrUpdateFabric(formData: FormData) {
       }
     })
   } else {
-    await prisma.fabric.create({
+    const newFabric = await prisma.fabric.create({
       data: {
         reference, name, width, color, unit,
         stockMeters: unit === 'METER' ? addedQty : 0,
@@ -54,72 +60,34 @@ export async function createOrUpdateFabric(formData: FormData) {
         alertThresholdUnits: unit === 'UNIT' ? alertThreshold : null,
       }
     })
+    fabricId = newFabric.id
+  }
+
+  // 🆕 MAGIE : On crée automatiquement un "Lot" pour l'inventaire absolu !
+  if (addedQty > 0) {
+    await prisma.fabricLot.create({
+      data: {
+        fabricId: fabricId,
+        quantityBought: addedQty,
+        quantityLeft: addedQty,
+        purchasePriceHT: newPrice,
+        location: location
+      }
+    })
   }
 
   revalidatePath('/stock')
   redirect('/stock')
 }
 
-// 🆕 Fonction pour lire les tissus depuis un Client Component
 export async function getFabrics() {
   return await prisma.fabric.findMany({
+    where: { isArchived: false },
+    include: {
+      lots: { orderBy: { createdAt: 'asc' } } // 🆕 On charge les lots avec le tissu !
+    },
     orderBy: { createdAt: 'desc' }
   })
-}
-
-export async function getAbsoluteStockValue() {
-  try {
-    // On récupère les tissus actifs avec leurs entrées classées de la plus récente à la plus ancienne
-    const fabrics = await prisma.fabric.findMany({
-      where: { isArchived: false },
-      include: {
-        stockMovements: {
-          where: { type: "ENTRY" },
-          orderBy: { createdAt: "desc" }
-        }
-      }
-    })
-
-    let totalAbsoluteValueHT = 0
-
-    for (const fabric of fabrics) {
-      const isMeter = fabric.unit === 'METER'
-      let remainingStock = isMeter ? (fabric.stockMeters || 0) : (fabric.stockUnits || 0)
-      const fallbackPrice = isMeter ? fabric.pricePerMeter : fabric.pricePerUnit
-
-      // Si aucun mouvement d'entrée n'a de prix renseigné, on applique le prix par défaut de la fiche
-      if (!fabric.stockMovements || fabric.stockMovements.length === 0) {
-        totalAbsoluteValueHT += remainingStock * fallbackPrice
-        continue
-      }
-
-      // On pioche dans les lots d'entrée successifs pour valoriser le stock restant
-      for (const movement of fabric.stockMovements) {
-        if (remainingStock <= 0) break
-
-        const movementQty = isMeter ? (movement.quantityMeters || 0) : (movement.quantityUnits || 0)
-        const movementPrice = movement.purchasePriceHT > 0 ? movement.purchasePriceHT : fallbackPrice
-
-        if (remainingStock >= movementQty) {
-          totalAbsoluteValueHT += movementQty * movementPrice
-          remainingStock -= movementQty
-        } else {
-          totalAbsoluteValueHT += remainingStock * movementPrice
-          remainingStock = 0
-        }
-      }
-
-      // Si après avoir parcouru les lots il reste du vieux stock, on le valorise au prix de base
-      if (remainingStock > 0) {
-        totalAbsoluteValueHT += remainingStock * fallbackPrice
-      }
-    }
-
-    return totalAbsoluteValueHT
-  } catch (error) {
-    console.error("Erreur calcul valorisation absolue stock :", error)
-    return 0
-  }
 }
 
 export async function deleteFabric(id: string) {
@@ -137,10 +105,7 @@ export async function deleteFabric(id: string) {
       })
       
       revalidatePath('/stock')
-      return { 
-        success: true, 
-        message: "Le tissu étant lié à des commandes a été archivé pour préserver l'historique." 
-      }
+      return { success: true, message: "Le tissu étant lié à des commandes a été archivé pour préserver l'historique." }
     }
 
     // 🗑️ CAS B : Le tissu est tout neuf ou n'a jamais servi. Suppression définitive !
@@ -149,13 +114,193 @@ export async function deleteFabric(id: string) {
     })
   
     revalidatePath('/stock')
-    return { 
-      success: true, 
-      message: "Le tissu a été définitivement supprimé de la base de données." 
-    }
-
+    return { success: true, message: "Le tissu a été définitivement supprimé de la base de données." }
   } catch (error) {
     console.error("Erreur suppression/archivage tissu:", error)
     return { success: false, error: "Une erreur technique est survenue." }
+  }
+}
+
+// ==========================================
+// 💰 2. CALCUL VALEUR ABSOLUE DU STOCK ATELIER
+// ==========================================
+
+export async function getAbsoluteStockValue() {
+  try {
+    // 1. Valorisation des rouleaux de tissus restants
+    const fabricLots = await prisma.fabricLot.findMany({
+      where: { quantityLeft: { gt: 0 } }
+    })
+    const fabricValue = fabricLots.reduce((sum, lot) => sum + (lot.quantityLeft * lot.purchasePriceHT), 0)
+
+    // 2. Valorisation des accessoires restants
+    const accessoryLots = await prisma.accessoryLot.findMany({
+      where: { quantityLeft: { gt: 0 } }
+    })
+    const accessoryValue = accessoryLots.reduce((sum, lot) => sum + (lot.quantityLeft * lot.purchasePriceHT), 0)
+
+    return fabricValue + accessoryValue
+  } catch (error) {
+    console.error("Erreur getAbsoluteStockValue:", error)
+    return 0
+  }
+}
+
+// ==========================================
+// 🧷 3. GESTION DES ACCESSOIRES (NOUVEAU)
+// ==========================================
+
+export async function getAccessories() {
+  return await prisma.accessory.findMany({
+    where: { isArchived: false },
+    include: {
+      lots: { orderBy: { createdAt: 'asc' } }
+    },
+    orderBy: { name: 'asc' }
+  })
+}
+
+export async function deleteAccessory(id: string) {
+  try {
+    // On vérifie si l'accessoire est utilisé dans un devis
+    const isUsed = await prisma.quoteItem.findFirst({
+      where: { accessoryId: id }
+    })
+
+    if (isUsed) {
+      await prisma.accessory.update({
+        where: { id },
+        data: { isArchived: true }
+      })
+      revalidatePath('/stock')
+      return { success: true, message: "Accessoire archivé (lié à des commandes)." }
+    }
+
+    await prisma.accessory.delete({
+      where: { id }
+    })
+    revalidatePath('/stock')
+    return { success: true, message: "Accessoire supprimé avec succès." }
+  } catch (error) {
+    console.error("Erreur deleteAccessory:", error)
+    return { success: false, error: "Erreur lors de la suppression de l'accessoire." }
+  }
+}
+
+// ==========================================
+// 🧷 4. ENREGISTREMENT ET ALIMENTATION DES ACCESSOIRES (NOUVEAU)
+// ==========================================
+
+export async function createOrUpdateAccessory(formData: FormData) {
+  const reference = formData.get('reference') as string
+  const name = formData.get('name') as string
+  const category = formData.get('category') as string // ex: "Zips", "Fils"
+  const addedQty = parseFloat(formData.get('stock') as string) || 0
+  const newPrice = parseFloat(formData.get('price') as string) || 0
+  const alertThreshold = parseFloat(formData.get('alertThreshold') as string) || 5
+  // 🆕 Récupération de la localisation
+  const location = (formData.get('location') as 'ATELIER' | 'BOUTIQUE') || 'ATELIER'
+
+  let accessoryId = ""
+
+  // 1. Recherche si l'accessoire existe déjà
+  const existingAccessory = await prisma.accessory.findUnique({
+    where: { reference }
+  })
+
+  if (existingAccessory) {
+    accessoryId = existingAccessory.id
+    const currentStock = Number(existingAccessory.stockQuantity || 0)
+    const oldPrice = Number(existingAccessory.pricePerUnit || 0)
+    const totalStock = currentStock + addedQty
+
+    // Calcul du Prix Moyen Pondéré pour la fiche de base
+    const averagePrice = totalStock > 0 
+      ? ((currentStock * oldPrice) + (addedQty * newPrice)) / totalStock
+      : newPrice
+
+    await prisma.accessory.update({
+      where: { reference },
+      data: {
+        name,
+        category,
+        stockQuantity: totalStock,
+        pricePerUnit: averagePrice,
+        alertThreshold: alertThreshold
+      }
+    })
+  } else {
+    // Création d'une nouvelle fiche
+    const newAccessory = await prisma.accessory.create({
+      data: {
+        reference,
+        name,
+        category,
+        stockQuantity: addedQty,
+        pricePerUnit: newPrice,
+        alertThreshold: alertThreshold,
+        unit: "UNIT"
+      }
+    })
+    accessoryId = newAccessory.id
+  }
+
+  // 2. Création automatique du lot d'achat absolu pour l'inventaire
+  if (addedQty > 0) {
+    await prisma.accessoryLot.create({
+      data: {
+        accessoryId: accessoryId,
+        quantityBought: addedQty,
+        quantityLeft: addedQty,
+        purchasePriceHT: newPrice,
+        location: location
+      }
+    })
+  }
+
+  revalidatePath('/stock')
+  redirect('/stock')
+}
+
+// 🆕 ACTION UNIVERSELLE POUR LE FORMULAIRE D'AJOUT
+export async function handleUniversalStockAdd(formData: FormData) {
+  const itemType = formData.get('itemType') as string // 'TISSU' ou 'ACCESSOIRE'
+
+  if (itemType === 'ACCESSOIRE') {
+    return await createOrUpdateAccessory(formData)
+  } else {
+    return await createOrUpdateFabric(formData)
+  }
+}
+
+export async function changeLotLocation(
+  lotId: string, 
+  itemType: 'FABRIC' | 'ACCESSORY' | 'FINISHED_PRODUCT' | 'MERCHANDISE', 
+  newLocation: 'ATELIER' | 'BOUTIQUE'
+) {
+  try {
+    switch (itemType) {
+      case 'FABRIC':
+        await prisma.fabricLot.update({ where: { id: lotId }, data: { location: newLocation } })
+        break
+      case 'ACCESSORY':
+        await prisma.accessoryLot.update({ where: { id: lotId }, data: { location: newLocation } })
+        break
+      case 'FINISHED_PRODUCT':
+        await prisma.finishedProductLot.update({ where: { id: lotId }, data: { location: newLocation } })
+        break
+      case 'MERCHANDISE':
+        await prisma.merchandiseLot.update({ where: { id: lotId }, data: { location: newLocation } })
+        break
+    }
+
+    // On rafraîchit les deux pages pour que l'affichage soit immédiat
+    revalidatePath('/stock')
+    revalidatePath('/stock-Boutique')
+    
+    return { success: true }
+  } catch (error) {
+    console.error("Erreur lors du transfert de stock :", error)
+    return { success: false, error: "Impossible de changer la localisation." }
   }
 }

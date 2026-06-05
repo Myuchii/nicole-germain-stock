@@ -70,6 +70,47 @@ export async function createClientQuick(data: {
   }
 }
 
+// 4. Modifier la fiche complète d'un client
+export async function updateClient(id: string, data: {
+  name: string
+  company?: string | null
+  email?: string | null
+  phone?: string | null
+  address?: string | null
+  zipCode?: string | null
+  city?: string | null
+  country?: string | null
+}) {
+  try {
+    if (!id) return { success: false, error: "ID du client manquant." }
+    if (!data.name || data.name.trim() === "") {
+      return { success: false, error: "Le nom du client est obligatoire." }
+    }
+
+    const updatedClient = await prisma.client.update({
+      where: { id },
+      data: {
+        name: data.name.trim(),
+        company: data.company?.trim() || null,
+        email: data.email?.trim() || null,
+        phone: data.phone?.trim() || null,
+        address: data.address?.trim() || null,
+        zipCode: data.zipCode?.trim() || null,
+        city: data.city?.trim() || null,
+        country: data.country?.trim() || "France",
+      }
+    })
+
+    revalidatePath('/clients')
+    revalidatePath(`/clients/${id}`)
+    revalidatePath('/quotes')
+
+    return { success: true, client: updatedClient }
+  } catch (error) {
+    console.error("Erreur lors de la modification du client :", error)
+    return { success: false, error: "Une erreur technique est survenue lors de la modification." }
+  }
+}
 // 3. Supprimer un client (uniquement s'il n'a pas de devis lié)
 export async function deleteClient(id: string) {
   try {

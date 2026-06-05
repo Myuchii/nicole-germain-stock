@@ -22,7 +22,6 @@ export async function adjustProductStock(id: string, newTotalQuantity: number, t
       const diff = newTotalQuantity - currentTotal
 
       if (diff > 0) {
-        // 📈 AJOUT : Nicole a trouvé du stock en plus, on crée un lot de régularisation
         await prisma.finishedProductLot.create({
           data: {
             finishedProductId: id,

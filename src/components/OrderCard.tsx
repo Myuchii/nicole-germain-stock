@@ -1,14 +1,16 @@
 "use client"
 
+import { useState } from 'react'
 import { generateQuotePDF } from '@/lib/pdf-generator'
-import { Printer, Trash2 } from 'lucide-react'
-import { deleteQuote } from '@/app/_actions/quote-actions'
+import { Printer, Trash2, Archive } from 'lucide-react'
+import { deleteQuote, archiveQuote } from '@/app/_actions/quote-actions'
 
 interface Order {
   id: string
   reference: string
   totalPrice: number
   quantity: number
+  isTTC: boolean // 🆕 Ajouté à l'interface pour réparer le bug du PDF TTC !
   validatedAt: Date | null
   client?: {
     name: string
@@ -19,12 +21,13 @@ interface Order {
   }
   items: Array<{
     id: string
-    customName?: string | null // 🆕 Ajouté pour TypeScript
+    customName?: string | null 
+    discountPercent: number // 🆕 Indispensable pour la remise sur le PDF
     fabric: {
       id: string
       reference: string
       name: string
-    } | null // 🆕 Le tissu peut être null sur un article manuel
+    } | null 
     quantityMeters: number | null
     prodTimeMinutes: number
     sellingPrice: number | null
@@ -32,21 +35,22 @@ interface Order {
 }
 
 export function OrderCard({ order }: { order: Order }) {
+  const [isPending, setIsPending] = useState(false)
+
   const handleDownloadPDF = async () => {
     // 1. On mappe les vrais produits de la commande avec détection du sur-mesure
     const products = order.items.map(item => {
       const isCustom = !item.fabric || !!item.customName
 
       return {
-        family: isCustom ? 'CUSTOM' : 'FITTED', // 👈 La vraie magie opère ici !
+        family: isCustom ? 'CUSTOM' : 'FITTED', 
         range: isCustom ? '-' : 'BASIQUE',
-        customName: item.customName || undefined, // On passe le nom à pdf-generator
+        customName: item.customName || undefined, 
         fabric: {
           reference: item.fabric?.reference || '-',
           name: item.fabric?.name || item.customName || 'Article sur mesure',
           pricePerMeter: 0 
         },
-        // Si c'est du sur-mesure on tue les dimensions, sinon fallback classique
         dims: isCustom ? { L: 0, l: 0 } : { L: 200, l: 160, bonnet: 30, diametre: 210 }, 
         mainFabricMeters: item.quantityMeters || 0,
         laborMinutes: item.prodTimeMinutes,
@@ -54,13 +58,13 @@ export function OrderCard({ order }: { order: Order }) {
       }
     })
 
-    // 2. On construit l'objet pour le PDF
+    // 2. On construit l'objet pour le PDF (FINI LES VALEURS EN DUR !)
     const quoteData = {
       id: order.id,
       reference: order.reference,
       totalPrice: order.totalPrice,
-      isTTC: false, 
-      discountPercent: 0,
+      isTTC: order.isTTC, // 🆕 Devient dynamique !
+      discountPercent: order.items?.[0]?.discountPercent || 0, // 🆕 Devient dynamique !
       products,
       client: {
         name: order.client?.name || "Client Inconnu",
@@ -86,9 +90,7 @@ export function OrderCard({ order }: { order: Order }) {
   }
 
   const handleDelete = async () => {
-    if (!confirm(`Voulez-vous vraiment annuler la commande ${order.reference} ?`)) {
-      return
-    }
+    if (!confirm(`Voulez-vous vraiment annuler la commande ${order.reference} ?`)) return
 
     const isAlreadyCoutured = confirm(
       "🧵 Question Atelier :\n\n" +
@@ -105,6 +107,22 @@ export function OrderCard({ order }: { order: Order }) {
           ? "🎉 Commande supprimée de l'atelier et transformée en Produit Fini dans ta Boutique !" 
           : "✅ Commande annulée. Les métrages ont été remis sur le rouleau de tissu."
       )
+      window.location.reload()
+    } else {
+      alert(res.error)
+    }
+  }
+
+  // 🆕 FONCTION CLAN DE L'ARCHIVAGE (PROPRE ET SÉCURISÉE CÔTÉ CLIENT)
+  const handleArchive = async () => {
+    if (!confirm(`Marquer la commande ${order.reference} comme expédiée ?\n\nElle sera classée dans les archives.`)) return
+    
+    setIsPending(true)
+    const res = await archiveQuote(order.id)
+    setIsPending(false)
+
+    if (res.success) {
+      alert("📦 Commande expédiée et archivée avec succès !")
       window.location.reload()
     } else {
       alert(res.error)
@@ -170,10 +188,20 @@ export function OrderCard({ order }: { order: Order }) {
         
         <button 
           onClick={handleDelete}
-          className="px-4 py-3 bg-red-500/90 hover:bg-red-500 text-white font-bold rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl text-sm"
+          className="px-4 py-3 bg-red-500/90 hover:bg-red-50 text-white font-bold rounded-xl flex items-center gap-2 transition-all shadow-lg hover:shadow-xl text-sm"
         >
           <Trash2 size={16} />
           Annuler
+        </button>
+
+        {/* 🆕 BOUTON D'ARCHIVAGE NETTOYÉ ET SYNCHRONISÉ */}
+        <button 
+          onClick={handleArchive}
+          disabled={isPending}
+          title="Archiver la commande (Expédiée)"
+          className="px-4 py-3 bg-slate-100 text-slate-500 hover:bg-slate-800 hover:text-white font-bold rounded-xl flex items-center justify-center transition-all shadow-md text-sm disabled:opacity-50"
+        >
+          <Archive size={16} />
         </button>
       </div>
     </div>

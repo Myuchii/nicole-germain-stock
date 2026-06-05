@@ -1,7 +1,7 @@
 "use client"
-import { useState } from 'react'
+import { useState, useEffect } from 'react' // 🆕 Ajout de useEffect
 import { calculateNGProduction } from '@/lib/engine'
-import { createQuoteFromCalculator } from '@/app/_actions/quote-actions'
+import { createQuoteFromCalculator, updateQuoteFromCalculator } from '@/app/_actions/quote-actions' // 🆕 Ajout de updateQuoteFromCalculator
 import { createClientQuick } from '@/app/_actions/client-actions'
 import { generateQuotePDF } from '@/lib/pdf-generator'
 import { Calculator, Save, Ruler, Layers, Plus, Trash2, Download, UserPlus, Check } from 'lucide-react'
@@ -51,7 +51,8 @@ export default function UniversalConfigurator({
   fabrics, 
   clients: initialClients, 
   settings,       
-  productTypes    
+  productTypes,
+  initialData    
 }: UniversalConfiguratorProps) {
 
   const [products, setProducts] = useState<Product[]>([
@@ -79,11 +80,54 @@ export default function UniversalConfigurator({
   const [quickCompany, setQuickCompany] = useState('')
 
   const [options, setOptions] = useState({
-    isTTC: false,
+    isTTC: true,
     discountPercent: 0,
     dueDate: '',         
     paymentMethod: ''    
   })
+
+  // 🆕 HYDRATATION DES DONNÉES EN MODE ÉDITION
+  useEffect(() => {
+    if (initialData) {
+      // 1. Recharger le client
+      if (initialData.clientId) {
+        setSelectedClientId(initialData.clientId)
+        const client = clients.find(c => c.id === initialData.clientId) || initialData.client
+        if (client) setClientSearch(client.name)
+      }
+
+      // 2. Recharger les options (TTC, Remises, Dates)
+      setOptions({
+        isTTC: initialData.isTTC || true,
+        discountPercent: initialData.items?.[0]?.discountPercent || 0,
+        dueDate: initialData.dueDate ? new Date(initialData.dueDate).toISOString().split('T')[0] : '',
+        paymentMethod: initialData.paymentMethod || ''
+      })
+
+      // 3. Recharger les lignes du devis
+      if (initialData.items && initialData.items.length > 0) {
+        const loadedProducts = initialData.items.map((item: any, index: number) => {
+          // Astuce : Si les dimensions ou la famille n'avaient pas été sauvegardées dans le précédent schéma, 
+          // on charge la ligne en tant qu'article "CUSTOM" pour conserver le prix et le temps de travail exacts.
+          const isCustom = item.customName || !item.family
+
+          return {
+            id: item.id || String(index + 1),
+            family: isCustom ? 'CUSTOM' : (item.family || 'FITTED'),
+            range: item.range || 'BASIQUE',
+            fabricId: item.fabricId || '',
+            dims: item.dims || { L: 200, l: 160, bonnet: 30, diametre: 210 },
+            isChute: item.isChute || false,
+            customName: item.customName || (isCustom ? 'Article sauvegardé' : ''),
+            customPriceHT: Number(item.sellingPrice) || 0,
+            customLaborMinutes: Number(item.prodTimeMinutes) || 0,
+            customFabricMeters: Number(item.quantityMeters) || 0,
+          }
+        })
+        setProducts(loadedProducts)
+      }
+    }
+  }, [initialData, clients])
 
   const results = products.map(product => {
     // Interception pour l'article sur-mesure (Manuel)
@@ -142,29 +186,43 @@ export default function UniversalConfigurator({
     ))
   }
 
-  const handleSave = async () => {
+const handleSave = async () => {
     if (!selectedClientId) return alert("Attribue d'abord ce devis à un client (existant ou nouveau) !")
     
-    // Vérification de sécurité : un produit "classique" doit avoir un tissu
     const invalidProducts = products.filter(p => p.family !== 'CUSTOM' && !p.fabricId)
     if (invalidProducts.length > 0) return alert("Choisis un tissu pour tes articles classiques !")
     
     setIsPending(true)
-    
-    await createQuoteFromCalculator({ 
+
+    const payload = { 
       products,
       clientId: selectedClientId,
       isTTC: options.isTTC,
       discountPercent: options.discountPercent,
       dueDate: options.dueDate,          
       paymentMethod: options.paymentMethod 
-    })
+    }
+    
+    try {
+      if (initialData?.id) {
+        // 🔄 MODE MODIFICATION
+        await updateQuoteFromCalculator(initialData.id, payload)
+        alert("Devis modifié et mis à jour avec succès !")
+      } else {
+        // 🆕 MODE CRÉATION
+        await createQuoteFromCalculator(payload)
+        alert("Devis enregistré avec succès ! Retrouve-le dans la liste.")
+        // On ne vide les champs que si c'est une création
+        setClientSearch('')
+        setSelectedClientId('')
+        setProducts([{ id: '1', family: 'FITTED', range: 'BASIQUE', fabricId: '', dims: { L: 200, l: 160, bonnet: 30, diametre: 210 }, isChute: false }])
+      }
+    } catch (error) {
+      alert("Une erreur est survenue lors de l'enregistrement.")
+      console.error(error)
+    }
     
     setIsPending(false)
-    alert("Devis enregistré avec succès ! Retrouve-le dans la liste de gauche.")
-    
-    setClientSearch('')
-    setSelectedClientId('')
   }
 
   const filteredClients = clients.filter(c =>
@@ -664,8 +722,14 @@ export default function UniversalConfigurator({
         <div className="p-6 bg-indigo-600 rounded-[2rem] text-white shadow-xl shadow-indigo-200">
           <div className="flex justify-between items-end mb-6">
             <div>
-              <p className="text-indigo-200 text-xs font-bold uppercase mb-1">Total Commande HT</p>
-              <p className="text-4xl font-black">{grandTotalHT.toFixed(2)} €</p>
+              {/* 🆕 Le texte change dynamiquement HT / TTC */}
+              <p className="text-indigo-200 text-xs font-bold uppercase mb-1">
+                Total Commande {options.isTTC ? 'TTC' : 'HT'}
+              </p>
+              {/* 🆕 Le calcul applique les 20% si la case est cochée */}
+              <p className="text-4xl font-black">
+                {(options.isTTC ? grandTotalHT * 1.2 : grandTotalHT).toFixed(2)} €
+              </p>
             </div>
             <div className="text-right text-sm">
               <p>Métrage : <strong>{results.reduce((sum, r) => sum + r.mainFabricMeters, 0).toFixed(1)} m</strong></p>
@@ -680,7 +744,7 @@ export default function UniversalConfigurator({
               className="flex-1 py-4 bg-white text-indigo-600 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-slate-100 transition-all disabled:opacity-50 shadow-lg"
             >
               <Save size={20} />
-              {isPending ? 'Enregistrement...' : 'Enregistrer'}
+              {isPending ? 'Enregistrement...' : (initialData?.id ? 'Mettre à jour le devis' : 'Créer le devis')}
             </button>
             
             <button 

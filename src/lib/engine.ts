@@ -15,7 +15,6 @@ export function calculateNGProduction(
   range: ProductRange,
   dimensions: Dimensions,
   fabrics: { mainPrice: number; secondaryPrice?: number; laize: number },
-  // 🔗 LES VARIABLES QUI VIENNENT DES PARAMÈTRES DE NICOLE :
   baseLaborMinutes: number, 
   costPerMinute: number,
   marginRate: number,

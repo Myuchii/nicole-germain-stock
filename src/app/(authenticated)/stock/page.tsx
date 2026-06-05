@@ -1,73 +1,108 @@
 'use client'
+
 import { useState, useEffect } from 'react'
-import { Plus, Search, Download, AlertTriangle, Trash2, Scissors, Layers } from 'lucide-react'
-import { deleteFabric, getFabrics, getAbsoluteStockValue } from '@/app/_actions/fabric-actions'
+import { Plus, Search, Download, AlertTriangle, Trash2, Scissors, Layers, Paperclip, Edit2 } from 'lucide-react'
+// Note: Il faudra créer ces nouvelles actions backend pour les accessoires et les lots
+import { deleteFabric, deleteAccessory, getFabrics, getAccessories, getAbsoluteStockValue } from '@/app/_actions/fabric-actions'
 import Link from 'next/link'
+import LocationSwitch from '@/components/LocationSwitch'
 
 export default function StockPage() {
   const [fabrics, setFabrics] = useState<any[]>([])
+  const [accessories, setAccessories] = useState<any[]>([]) // 🆕 Nouvel état pour les accessoires
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [absoluteValue, setAbsoluteValue] = useState<number>(0)
 
-useEffect(() => {
-  async function loadData() {
-    const data = await getFabrics()
-    setFabrics(data)
-    
-    // 🆕 Appel de la valorisation par lots
-    const realValue = await getAbsoluteStockValue()
-    setAbsoluteValue(realValue)
-    
-    setLoading(false)
-  }
-  loadData()
-}, [])
+  useEffect(() => {
+    async function loadData() {
+      // 💡 On récupérera ici les tissus AVEC leurs lots inclus
+      const data = await getFabrics()
+      setFabrics(data)
 
-  // 🔍 Filtrage instantané
+      const accData = await getAccessories()
+      setAccessories(accData)
+      
+      const realValue = await getAbsoluteStockValue()
+      setAbsoluteValue(realValue)
+      
+      setLoading(false)
+    }
+    loadData()
+  }, [])
+
+  // 🔍 Filtrage instantané unifié
+  const filterQuery = searchQuery.toLowerCase()
+  
   const filteredFabrics = fabrics.filter(f => 
     !f.isArchived && (
-      f.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      f.reference.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      f.color.toLowerCase().includes(searchQuery.toLowerCase())
+      f.name.toLowerCase().includes(filterQuery) || 
+      f.reference.toLowerCase().includes(filterQuery) ||
+      f.color.toLowerCase().includes(filterQuery)
+    )
+  )
+
+  const filteredAccessories = accessories.filter(a => 
+    !a.isArchived && (
+      a.name.toLowerCase().includes(filterQuery) || 
+      a.reference.toLowerCase().includes(filterQuery)
     )
   )
 
   // ==========================================
-  // 📈 CALCULS DES KPIs DU STOCK ATELIER (PMP)
+  // 📈 CALCULS DES KPIs DU STOCK ATELIER
   // ==========================================
-  const totalValueHT = fabrics.reduce((sum, f) => {
-    const isMeter = f.unit === 'METER'
-    const stock = isMeter ? Number(f.stockMeters || 0) : Number(f.stockUnits || 0)
-    const price = isMeter ? Number(f.pricePerMeter || 0) : Number(f.pricePerUnit || 0)
-    return sum + (stock * price)
+  // Calcul basé sur les lots (ou fallback sur l'ancien système si les lots ne sont pas encore chargés)
+  const totalMeters = fabrics.reduce((sum, f) => {
+    if (f.lots && f.lots.length > 0) {
+      return sum + f.lots.reduce((lotSum: number, lot: any) => lotSum + lot.quantityLeft, 0)
+    }
+    return f.unit === 'METER' ? sum + Number(f.stockMeters || 0) : sum
   }, 0)
 
-  const totalMeters = fabrics.reduce((sum, f) => 
-    f.unit === 'METER' ? sum + Number(f.stockMeters || 0) : sum, 0
-  )
-
   const totalAlerts = fabrics.filter(f => {
-    const isMeter = f.unit === 'METER'
-    const stock = isMeter ? Number(f.stockMeters || 0) : Number(f.stockUnits || 0)
-    const threshold = isMeter ? Number(f.alertThresholdMeters || 0) : Number(f.alertThresholdUnits || 0)
+    const stock = f.lots ? f.lots.reduce((s: number, l: any) => s + l.quantityLeft, 0) : (f.unit === 'METER' ? Number(f.stockMeters || 0) : Number(f.stockUnits || 0))
+    const threshold = f.unit === 'METER' ? Number(f.alertThresholdMeters || 0) : Number(f.alertThresholdUnits || 0)
     return stock <= threshold
   }).length
 
-  // 📊 Export CSV Tissus
+  // 📊 Export CSV Tissus & Accessoires (Version Lots)
   const handleExportCSV = () => {
-    if (fabrics.length === 0) return
-
-    const headers = ["Référence", "Désignation", "Couleur", "Unité", "Laize (cm)", "Stock Actuel", "Seuil d'Alerte", "Prix Achat Moyen HT", "Valeur Totale HT"]
+    const headers = [
+      "Catégorie", "Référence", "Désignation", "Couleur/Détail", "Unité", "Date Entrée Lot", 
+      "Quantité Restante", "Seuil d'Alerte", "Prix Achat Lot HT (€)", "Valeur Restante HT (€)"
+    ]
     
-    const rows = fabrics.map(f => {
-      const isMeter = f.unit === 'METER'
-      const stock = isMeter ? f.stockMeters : f.stockUnits
-      const price = isMeter ? f.pricePerMeter : f.pricePerUnit
-      const alert = isMeter ? f.alertThresholdMeters : f.alertThresholdUnits
-      const value = (stock * price).toFixed(2)
+    const rows: any[][] = []
 
-      return [f.reference, f.name, f.color, f.unit, f.width || "Non spécifiée", stock, alert, price.toFixed(2), value]
+    // Export des Tissus
+    fabrics.forEach(f => {
+      const isMeter = f.unit === 'METER'
+      const alert = isMeter ? f.alertThresholdMeters : f.alertThresholdUnits
+      const activeLots = f.lots?.filter((l: any) => l.quantityLeft > 0) || []
+
+      if (activeLots.length === 0) {
+        // Fallback si pas de lot actif ou ancien système
+        const stock = isMeter ? f.stockMeters : f.stockUnits
+        const price = isMeter ? f.pricePerMeter : f.pricePerUnit
+        rows.push(["TISSU", f.reference, f.name, f.color, f.unit, "-", stock, alert, price?.toFixed(2), (stock * price).toFixed(2)])
+      } else {
+        activeLots.forEach((lot: any) => {
+          rows.push(["TISSU", f.reference, f.name, f.color, f.unit, new Date(lot.createdAt).toLocaleDateString('fr-FR'), lot.quantityLeft, alert, lot.purchasePriceHT?.toFixed(2), (lot.quantityLeft * lot.purchasePriceHT).toFixed(2)])
+        })
+      }
+    })
+
+    // Export des Accessoires (Prévu)
+    accessories.forEach(a => {
+      const activeLots = a.lots?.filter((l: any) => l.quantityLeft > 0) || []
+      if (activeLots.length === 0) {
+         rows.push(["ACCESSOIRE", a.reference, a.name, "-", "UNITÉ", "-", 0, a.alertThreshold, "-", "0.00"])
+      } else {
+        activeLots.forEach((lot: any) => {
+          rows.push(["ACCESSOIRE", a.reference, a.name, "-", "UNITÉ", new Date(lot.createdAt).toLocaleDateString('fr-FR'), lot.quantityLeft, a.alertThreshold, lot.purchasePriceHT?.toFixed(2), (lot.quantityLeft * lot.purchasePriceHT).toFixed(2)])
+        })
+      }
     })
 
     const escapeCSV = (value: any) => `"${(value?.toString() || "").replace(/"/g, '""')}"`
@@ -76,7 +111,7 @@ useEffect(() => {
     const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement("a")
     link.href = URL.createObjectURL(blob)
-    link.download = `Inventaire_Tissus_${new Date().toISOString().split('T')[0]}.csv`
+    link.download = `Inventaire_Atelier_Lots_${new Date().toISOString().split('T')[0]}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -89,26 +124,26 @@ useEffect(() => {
       {/* HEADER */}
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-slate-900">Inventaire des Matières</h1>
-          <p className="text-slate-500">Gérez vos rouleaux de tissus, laizes et alertes de métrage.</p>
+          <h1 className="text-3xl font-serif font-bold text-slate-900">Magasin Atelier</h1>
+          <p className="text-slate-500">Gérez vos rouleaux de tissus et vos accessoires par lots d'achat.</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={handleExportCSV} className="flex items-center gap-2 px-5 py-3 bg-white text-slate-700 rounded-2xl font-bold border border-slate-200 hover:bg-slate-50 transition-all shadow-sm">
-            <Download size={18} /> Export CSV
+          <button onClick={handleExportCSV} className="flex items-center gap-2 px-5 py-3 bg-white text-slate-700 rounded-2xl font-bold border border-slate-200 hover:bg-slate-50 transition-all shadow-sm text-sm">
+            <Download size={16} /> Export CSV
           </button>
           <Link href="/stock/add">
-            <button className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-indigo-600 transition-all shadow-lg">
-              <Plus size={20} /> Nouveau Tissu
+            <button className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-indigo-600 transition-all shadow-lg text-sm">
+              <Plus size={18} /> Nouveau Référencement
             </button>
           </Link>
         </div>
       </div>
 
-      {/* 🆕 GRILLE DES STATISTIQUES GLOBAUX VALORISÉS */}
+      {/* GRILLE DES STATISTIQUES GLOBAUX VALORISÉS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden">
           <div className="relative z-10">
-            <p className="text-xs font-bold text-slate-400 uppercase">Valeur du Stock Matière (PMP)</p>
+            <p className="text-xs font-bold text-slate-400 uppercase">Valeur du Stock (PMP / Lots)</p>
             <p className="text-2xl font-serif font-bold text-emerald-600 mt-1">{absoluteValue.toFixed(2)} €</p>
           </div>
           <Layers className="absolute -right-4 -bottom-4 text-emerald-50 opacity-40" size={80} />
@@ -135,7 +170,7 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* RECHERCHE */}
+      {/* RECHERCHE UNIFIÉE */}
       <div className="flex gap-4">
         <div className="flex-1 relative">
           <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
@@ -143,82 +178,190 @@ useEffect(() => {
             type="text" 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher une référence, une couleur, un nom..." 
-            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm font-medium" 
+            placeholder="Rechercher un tissu, une couleur ou un accessoire..." 
+            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm font-medium text-sm" 
           />
         </div>
       </div>
 
-      {/* TABLEAU */}
-      <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50 border-b border-slate-100">
-            <tr>
-              <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Réf & Laize</th>
-              <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Tissu & Couleur</th>
-              <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Stock Actuel</th>
-              <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Statut</th>
-              <th className="px-6 py-4"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {filteredFabrics.length === 0 ? (
-              <tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">Aucun tissu trouvé.</td></tr>
-            ) : filteredFabrics.map((f) => {
-              const isMeter = f.unit === 'METER'
-              const stock = isMeter ? Number(f.stockMeters) : Number(f.stockUnits)
-              const threshold = isMeter ? Number(f.alertThresholdMeters) : Number(f.alertThresholdUnits)
-              const isAlert = stock <= threshold
-
-              return (
-                <tr key={f.id} className={`hover:bg-slate-50/50 transition-colors ${isAlert ? 'bg-red-50/30' : ''}`}>
-                  <td className="px-6 py-4">
-                    <p className="font-mono text-xs font-bold text-indigo-600">{f.reference}</p>
-                    <p className="text-[10px] text-slate-400 font-bold mt-0.5">
-                      {f.width > 0 ? `Laize: ${f.width} cm` : "Laize: Non spécifiée"}
-                    </p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="font-bold text-slate-900">{f.name}</p>
-                    <p className="text-xs text-slate-500">{f.color}</p>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="font-black text-slate-800 text-lg">{stock}</span>
-                    <span className="text-xs text-slate-500 ml-1">{isMeter ? 'm' : 'p'}</span>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    {stock <= 0 ? (
-                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500 flex items-center justify-center gap-1 w-max mx-auto"><AlertTriangle size={12}/> Rupture</span>
-                    ) : isAlert ? (
-                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 flex items-center justify-center gap-1 w-max mx-auto"><AlertTriangle size={12}/> Stock Faible</span>
-                    ) : (
-                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 w-max mx-auto block">En stock</span>
-                    )}
-                  </td>
-<td className="px-6 py-4 text-right">
-                    <button 
-                      onClick={async () => {
-                        if (confirm("Voulez-vous supprimer ce tissu ?")) {
-                          const res = await deleteFabric(f.id)
-                          if (!res.success) {
-                            alert(res.error)
-                          } else {
-                            // On affiche le message personnalisé (archivé ou supprimé)
-                            alert(`✅ ${res.message || "Opération réussie !"}`)
-                            window.location.reload()
-                          }
-                        }
-                      }}
-                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </td>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+        {/* ========================================== */}
+        {/* TABLEAU 1 : LES TISSUS */}
+        {/* ========================================== */}
+        <div className="space-y-3">
+          <h2 className="font-serif font-bold text-lg text-slate-800 flex items-center gap-2">
+            <Scissors size={20} className="text-indigo-500" /> Rouleaux de Tissus
+          </h2>
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr>
+                  <th className="px-5 py-4 font-bold text-slate-400 uppercase">Réf / Désignation</th>
+                  <th className="px-5 py-4 font-bold text-slate-400 uppercase text-center">Stock Global</th>
+                  <th className="px-5 py-4 font-bold text-slate-400 uppercase">Détail des Rouleaux (Lots)</th>
+                  <th className="px-5 py-4 text-right">Actions</th>
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredFabrics.length === 0 ? (
+                  <tr><td colSpan={4} className="p-8 text-center text-slate-400 italic">Aucun tissu trouvé.</td></tr>
+                ) : filteredFabrics.map((f) => {
+                  const isMeter = f.unit === 'METER'
+                  const threshold = isMeter ? Number(f.alertThresholdMeters) : Number(f.alertThresholdUnits)
+                  // Calcul via lots (ou fallback)
+                  const totalStock = f.lots ? f.lots.reduce((s: number, l: any) => s + l.quantityLeft, 0) : (isMeter ? Number(f.stockMeters) : Number(f.stockUnits))
+                  const isAlert = totalStock <= threshold
+
+                  return (
+                    <tr key={f.id} className={`hover:bg-slate-50 transition-colors ${isAlert ? 'bg-red-50/30' : ''}`}>
+                      <td className="px-5 py-3">
+                        <p className="font-mono font-bold text-indigo-600">{f.reference}</p>
+                        <p className="font-bold text-slate-900">{f.name}</p>
+                        <p className="text-[10px] text-slate-500">{f.color} • Laize: {f.width || '?'}cm</p>
+                      </td>
+                      <td className="px-5 py-3 text-center">
+                        <span className={`px-2.5 py-1 rounded-full font-black ${isAlert ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-800'}`}>
+                          {totalStock.toFixed(1)} {isMeter ? 'm' : 'p'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-[11px] text-slate-500">
+                        {(!f.lots || f.lots.filter((l: any) => l.quantityLeft > 0).length === 0) ? (
+                          <span className={totalStock > 0 ? "text-slate-400" : "text-red-500 font-bold"}>
+                            {totalStock > 0 ? "Ancien format (sans lot)" : "Rupture de stock"}
+                          </span>
+                        ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {f.lots.filter((l: any) => l.quantityLeft > 0).map((lot: any) => (
+                            <div key={lot.id} className="bg-white border border-slate-200 p-1.5 rounded-lg flex flex-col gap-0.5 cursor-pointer hover:border-indigo-400 shadow-sm transition-colors group">
+                              <span className="text-slate-700 font-black group-hover:text-indigo-700">{lot.quantityLeft}m</span>
+                              <span className="text-[9px] uppercase tracking-wider">
+                                Achat: <strong className="text-emerald-600">{lot.purchasePriceHT?.toFixed(2)}€</strong>
+                              </span>
+                              
+                              <div className="mt-1">
+                                <LocationSwitch 
+                                  lotId={lot.id} 
+                                  itemType="FABRIC" 
+                                  currentLocation={lot.location} 
+                                />
+                              </div>
+                              
+                            </div>
+                          ))}
+                        </div>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 pr-5">
+                        <div className="flex items-center justify-end gap-1">
+                          <button 
+                            onClick={async () => {
+                              if (confirm("Voulez-vous supprimer ce tissu ?")) {
+                                const res = await deleteFabric(f.id)
+                                if (res.success) window.location.reload()
+                                else alert(res.error)
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ========================================== */}
+        {/* TABLEAU 2 : LES ACCESSOIRES (NOUVEAU) */}
+        {/* ========================================== */}
+        <div className="space-y-3">
+          <h2 className="font-serif font-bold text-lg text-slate-800 flex items-center gap-2">
+            <Paperclip size={20} className="text-amber-500" /> Accessoires & Mercerie
+          </h2>
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr>
+                  <th className="px-5 py-4 font-bold text-slate-400 uppercase">Réf / Désignation</th>
+                  <th className="px-5 py-4 font-bold text-slate-400 uppercase text-center">Stock Global</th>
+                  <th className="px-5 py-4 font-bold text-slate-400 uppercase">Détail des Lots</th>
+                  <th className="px-5 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredAccessories.length === 0 ? (
+                  <tr><td colSpan={4} className="p-8 text-center text-slate-400 italic">Aucun accessoire référencé. Préparez la base de données !</td></tr>
+                ) : filteredAccessories.map((a) => {
+                  const totalStock = a.lots ? a.lots.reduce((s: number, l: any) => s + l.quantityLeft, 0) : 0
+                  const isAlert = totalStock <= (a.alertThreshold || 0)
+
+                  return (
+                    <tr key={a.id} className={`hover:bg-slate-50 transition-colors ${isAlert ? 'bg-red-50/30' : ''}`}>
+                      <td className="px-5 py-3">
+                        <p className="font-mono font-bold text-amber-600">{a.reference}</p>
+                        <p className="font-bold text-slate-900">{a.name}</p>
+                      </td>
+                      <td className="px-5 py-3 text-center">
+                        <span className={`px-2.5 py-1 rounded-full font-black ${isAlert ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-800'}`}>
+                          {totalStock} pcs
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-[11px] text-slate-500">
+                        {(!a.lots || a.lots.filter((l: any) => l.quantityLeft > 0).length === 0) ? (
+                          <span className="text-red-500 font-bold">Rupture de stock</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {a.lots.filter((l: any) => l.quantityLeft > 0).map((lot: any) => (
+                              <div key={lot.id} className="bg-white border border-slate-200 p-1.5 rounded-lg flex flex-col gap-0.5 cursor-pointer hover:border-amber-400 shadow-sm transition-colors group">
+                                <span className="text-slate-700 font-black group-hover:text-amber-700">{lot.quantityLeft} pcs</span>
+                                <span className="text-[9px] uppercase tracking-wider">
+                                  Achat: <strong className="text-emerald-600">{lot.purchasePriceHT?.toFixed(2)}€</strong>
+                                </span>
+                                
+                                <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                                  <LocationSwitch 
+                                    lotId={lot.id} 
+                                    itemType="ACCESSORY" 
+                                    currentLocation={lot.location} 
+                                  />
+                                </div>
+                                
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 pr-5 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button 
+                            onClick={async () => {
+                              if (confirm("Voulez-vous supprimer cet accessoire ?")) {
+                                const res = await deleteAccessory(a.id)
+                                if (res.success) window.location.reload()
+                                else alert(res.error)
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 pr-5 text-right">
+                        {/* Boutons d'actions */}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
   )

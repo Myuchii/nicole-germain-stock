@@ -4,6 +4,7 @@ import { getInventoryData, createFinishedProduct, createMerchandise, deleteProdu
 import { recordSale, getSalesJournal } from '@/app/_actions/sales-actions'
 import { Download, AlertTriangle, ShoppingCart, Package, ShoppingBag, Plus, Trash2, Search, Eye, EyeOff, Edit2, Pencil} from 'lucide-react'
 import { adjustProductStock, adjustProductPrice } from '@/app/_actions/boutique-actions'
+import LocationSwitch from '@/components/LocationSwitch'
 
 export default function StockBoutiquePage() {
   const [inventory, setInventory] = useState<any>(null)
@@ -280,6 +281,13 @@ const handleExportSalesCSV = () => {
                               <div key={lot.id} onClick={() => setEditingLot({id: lot.id, type: 'PF', currentQty: lot.quantityLeft, name: p.name, price: lot.sellingPriceHT})} className="bg-slate-50 border border-slate-200 p-1.5 rounded-lg flex flex-col gap-0.5 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors group relative">
                                 <span className="text-slate-700 font-black group-hover:text-indigo-700">{lot.quantityLeft} pcs</span>
                                 <span className="text-[9px] uppercase tracking-wider">Vente: <strong>{lot.sellingPriceHT?.toFixed(2)}€</strong></span>
+                                <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                                  <LocationSwitch 
+                                    lotId={lot.id} 
+                                    itemType="FINISHED_PRODUCT" 
+                                    currentLocation={lot.location} 
+                                  />
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -325,6 +333,13 @@ const handleExportSalesCSV = () => {
                               <div key={lot.id} onClick={() => setEditingLot({id: lot.id, type: 'MA', currentQty: lot.quantityLeft, name: m.name, price: lot.sellingPriceHT})} className="bg-slate-50 border border-slate-200 p-1.5 rounded-lg flex flex-col gap-0.5 cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition-colors group">
                                 <span className="text-slate-700 font-black group-hover:text-emerald-700">{lot.quantityLeft} pcs</span>
                                 <span className="text-[9px] uppercase tracking-wider">Achat: <strong className="text-emerald-600">{lot.purchasePriceHT?.toFixed(2)}€</strong> | Vente: <strong className="text-indigo-600">{lot.sellingPriceHT?.toFixed(2)}€</strong></span>
+                                <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                                  <LocationSwitch 
+                                    lotId={lot.id} 
+                                    itemType="MERCHANDISE" 
+                                    currentLocation={lot.location} 
+                                  />
+                                </div>
                               </div>
                             ))}
                           </div>

@@ -22,8 +22,6 @@ export default function AddClientPage() {
         alert(res.error)
       } else {
         alert("✅ Fiche client enregistrée avec succès !")
-        // Si tu as un routeur pour rediriger Nicole après :
-        // window.location.href = '/clients'
       }
     } catch (err) {
       alert("Une erreur est survenue lors de l'enregistrement.")

@@ -13,7 +13,9 @@ export async function getAtelierSettings() {
       data: { 
         id: "global", 
         marginRate: 2.5,
-        laborCostPerMin: 0.35
+        laborCostPerMin: 0.35,
+        auditQuota: 10,   // 10 pièces
+        auditPeriod: 12   // Par an
       }
     })
   }
@@ -23,25 +25,28 @@ export async function getAtelierSettings() {
 export async function updateAtelierSettings(formData: FormData) {
   const marginRate = parseFloat(formData.get('marginRate') as string)
   const laborCostPerMin = parseFloat(formData.get('laborCostPerMin') as string)
+  const auditQuota = parseInt(formData.get('auditQuota') as string)
+  const auditPeriod = parseInt(formData.get('auditPeriod') as string)
 
-  if (isNaN(marginRate) || isNaN(laborCostPerMin) || marginRate <= 0 || laborCostPerMin <= 0) {
-    return { success: false, error: "Valeurs invalides. Veuillez entrer des nombres positifs." }
+  if (isNaN(marginRate) || isNaN(laborCostPerMin) || isNaN(auditQuota) || isNaN(auditPeriod)) {
+    return { success: false, error: "Valeurs invalides." }
   }
 
   try {
-    // Utilisation de upsert pour éviter tout crash si la ligne venait à disparaître
     await prisma.atelierSettings.upsert({
       where: { id: "global" },
-      update: { marginRate, laborCostPerMin },
-      create: { id: "global", marginRate, laborCostPerMin }
+      update: { marginRate, laborCostPerMin, auditQuota, auditPeriod },
+      create: { id: "global", marginRate, laborCostPerMin, auditQuota, auditPeriod }
     })
-    revalidatePath('/parametres') // Ajustez le chemin selon votre route réelle
+    revalidatePath('/parametres')
     return { success: true }
   } catch (e: any) {
     console.error("Erreur updateAtelierSettings:", e)
-    return { success: false, error: "Erreur lors de la sauvegarde financière" }
+    return { success: false, error: "Erreur lors de la sauvegarde" }
   }
 }
+
+// --- 2. GESTION DES TYPES DE PRODUITS ---
 
 export async function getProductTypes() {
   try {
@@ -49,10 +54,7 @@ export async function getProductTypes() {
       orderBy: { name: 'asc' }
     })
 
-    // Si c'est vide, on insère un par un de manière très sécurisée
     if (types.length === 0) {
-      console.log("🛠️ Base vide : Initialisation des types de produits...")
-      
       const defaultTypes = [
         { name: 'Drap Housse / Protège Matelas', family: 'FITTED', baseLaborTime: 30 },
         { name: 'Housse de Couette / Taie', family: 'ENVELOPE', baseLaborTime: 45 },
@@ -64,19 +66,12 @@ export async function getProductTypes() {
       for (const t of defaultTypes) {
         await prisma.productType.create({ data: t })
       }
-
-      // On recharge la liste une fois l'insertion terminée
-      types = await prisma.productType.findMany({
-        orderBy: { name: 'asc' }
-      })
-      console.log("✅ Création des types réussie !")
+      types = await prisma.productType.findMany({ orderBy: { name: 'asc' } })
     }
 
     return types
-
   } catch (error) {
-    // S'il y a un crash, on l'attrape et on l'affiche EN ROUGE dans votre terminal VSCode/Terminal
-    console.error("❌ ERREUR FATALE LORS DE LA CRÉATION DES TYPES :", error)
+    console.error("Erreur getProductTypes:", error)
     return [] 
   }
 }
@@ -85,7 +80,6 @@ export async function updateProductTypeTimes(formData: FormData) {
   try {
     const entries = Array.from(formData.entries())
     
-    // On utilise une transaction Prisma pour tout mettre à jour d'un coup de manière sécurisée
     const updatePromises = entries
       .filter(([key]) => key.startsWith('type_'))
       .map(([key, value]) => {
@@ -99,7 +93,7 @@ export async function updateProductTypeTimes(formData: FormData) {
           })
         }
       })
-      .filter(Boolean) // Retire les undefined si une valeur était invalide
+      .filter(Boolean)
 
     await prisma.$transaction(updatePromises as any)
 
@@ -108,5 +102,45 @@ export async function updateProductTypeTimes(formData: FormData) {
   } catch (e: any) {
     console.error("Erreur updateProductTypeTimes:", e)
     return { success: false, error: "Impossible de mettre à jour les temps d'atelier" }
+  }
+}
+
+// --- 3. ANALYSE DES AUDITS CHRONOS (La fonction qui te manquait !) ---
+
+export async function getChronoStats() {
+  try {
+    const allTimedItems = await prisma.quoteItem.findMany({
+      where: { finishedAt: { not: null }, startedCoutureAt: { not: null } },
+      include: { quote: true }
+    })
+
+    const statsMap = new Map<string, { totalMin: number, count: number }>()
+
+    allTimedItems.forEach(item => {
+      const jsonProducts = (item.quote.products as any[]) || []
+      const matched = jsonProducts.find(p => p.fabricId === item.fabricId) || jsonProducts[0]
+      const family = matched?.family || 'CUSTOM'
+
+      if (item.finishedAt && item.startedCoutureAt) {
+        const realMin = Math.round((new Date(item.finishedAt).getTime() - new Date(item.startedCoutureAt).getTime()) / 1000 / 60)
+        
+        const current = statsMap.get(family) || { totalMin: 0, count: 0 }
+        statsMap.set(family, { totalMin: current.totalMin + realMin, count: current.count + 1 })
+      }
+    })
+
+    // Transformation en dictionnaire : { 'FITTED': { avg: 28, count: 12 }, ... }
+    const result: Record<string, { avg: number, count: number }> = {}
+    statsMap.forEach((data, family) => {
+      result[family] = {
+        avg: Math.round(data.totalMin / data.count),
+        count: data.count
+      }
+    })
+
+    return result
+  } catch (error) {
+    console.error("Erreur getChronoStats:", error)
+    return {}
   }
 }
