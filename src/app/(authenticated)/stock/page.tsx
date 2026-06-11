@@ -1,22 +1,58 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Search, Download, AlertTriangle, Trash2, Scissors, Layers, Paperclip, Edit2 } from 'lucide-react'
-// Note: Il faudra créer ces nouvelles actions backend pour les accessoires et les lots
+import { Plus, Search, Download, AlertTriangle, Trash2, Scissors, Layers, Paperclip, Palette } from 'lucide-react'
 import { deleteFabric, deleteAccessory, getFabrics, getAccessories, getAbsoluteStockValue } from '@/app/_actions/fabric-actions'
+import { syncAllPrestashopFabrics } from '@/app/_actions/prestashop-actions'
 import Link from 'next/link'
 import LocationSwitch from '@/components/LocationSwitch'
 
+// ==========================================
+// 🆕 COMPOSANT : BOUTON D'ASPIRATION VOSGIA
+// ==========================================
+function SyncFabricsButton() {
+  const [loading, setLoading] = useState(false)
+
+  const handleSync = async () => {
+    setLoading(true)
+    try {
+      const res = await syncAllPrestashopFabrics()
+      if (res.success) {
+        alert(res.message)
+      } else {
+        alert(`Erreur : ${res.error}`)
+      }
+    } catch (err) {
+      alert("Erreur réseau lors de la synchronisation.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleSync}
+      disabled={loading}
+      className="flex items-center gap-2 px-5 py-3 bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold rounded-2xl hover:bg-indigo-100 transition-all disabled:opacity-50 text-sm shadow-sm"
+    >
+      <Palette size={16} className={loading ? 'animate-spin' : ''} />
+      {loading ? 'Aspiration du catalogue...' : 'Aspirer les Tissus Vosgia'}
+    </button>
+  )
+}
+
+// ==========================================
+// 🏢 PAGE PRINCIPALE : MAGASIN ATELIER
+// ==========================================
 export default function StockPage() {
   const [fabrics, setFabrics] = useState<any[]>([])
-  const [accessories, setAccessories] = useState<any[]>([]) // 🆕 Nouvel état pour les accessoires
+  const [accessories, setAccessories] = useState<any[]>([]) 
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [absoluteValue, setAbsoluteValue] = useState<number>(0)
 
   useEffect(() => {
     async function loadData() {
-      // 💡 On récupérera ici les tissus AVEC leurs lots inclus
       const data = await getFabrics()
       setFabrics(data)
 
@@ -31,7 +67,6 @@ export default function StockPage() {
     loadData()
   }, [])
 
-  // 🔍 Filtrage instantané unifié
   const filterQuery = searchQuery.toLowerCase()
   
   const filteredFabrics = fabrics.filter(f => 
@@ -49,10 +84,6 @@ export default function StockPage() {
     )
   )
 
-  // ==========================================
-  // 📈 CALCULS DES KPIs DU STOCK ATELIER
-  // ==========================================
-  // Calcul basé sur les lots (ou fallback sur l'ancien système si les lots ne sont pas encore chargés)
   const totalMeters = fabrics.reduce((sum, f) => {
     if (f.lots && f.lots.length > 0) {
       return sum + f.lots.reduce((lotSum: number, lot: any) => lotSum + lot.quantityLeft, 0)
@@ -66,7 +97,6 @@ export default function StockPage() {
     return stock <= threshold
   }).length
 
-  // 📊 Export CSV Tissus & Accessoires (Version Lots)
   const handleExportCSV = () => {
     const headers = [
       "Catégorie", "Référence", "Désignation", "Couleur/Détail", "Unité", "Date Entrée Lot", 
@@ -75,14 +105,12 @@ export default function StockPage() {
     
     const rows: any[][] = []
 
-    // Export des Tissus
     fabrics.forEach(f => {
       const isMeter = f.unit === 'METER'
       const alert = isMeter ? f.alertThresholdMeters : f.alertThresholdUnits
       const activeLots = f.lots?.filter((l: any) => l.quantityLeft > 0) || []
 
       if (activeLots.length === 0) {
-        // Fallback si pas de lot actif ou ancien système
         const stock = isMeter ? f.stockMeters : f.stockUnits
         const price = isMeter ? f.pricePerMeter : f.pricePerUnit
         rows.push(["TISSU", f.reference, f.name, f.color, f.unit, "-", stock, alert, price?.toFixed(2), (stock * price).toFixed(2)])
@@ -93,7 +121,6 @@ export default function StockPage() {
       }
     })
 
-    // Export des Accessoires (Prévu)
     accessories.forEach(a => {
       const activeLots = a.lots?.filter((l: any) => l.quantityLeft > 0) || []
       if (activeLots.length === 0) {
@@ -124,13 +151,17 @@ export default function StockPage() {
       {/* HEADER */}
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-3xl font-serif font-bold text-slate-900">Magasin Atelier</h1>
-          <p className="text-slate-500">Gérez vos rouleaux de tissus et vos accessoires par lots d'achat.</p>
+          <h1 className="text-3xl font-serif font-bold text-slate-900">Stock Atelier</h1>
+          <p className="text-slate-500">Gérez vos tissus et vos accessoires par lots d'achat.</p>
         </div>
         <div className="flex gap-3">
           <button onClick={handleExportCSV} className="flex items-center gap-2 px-5 py-3 bg-white text-slate-700 rounded-2xl font-bold border border-slate-200 hover:bg-slate-50 transition-all shadow-sm text-sm">
             <Download size={16} /> Export CSV
           </button>
+          
+          {/* 🎯 INTÉGRATION PARFAITE DU NOUVEAU BOUTON D'ASPIRATION */}
+          <SyncFabricsButton />
+
           <Link href="/stock/add">
             <button className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-indigo-600 transition-all shadow-lg text-sm">
               <Plus size={18} /> Nouveau Référencement
@@ -139,7 +170,7 @@ export default function StockPage() {
         </div>
       </div>
 
-      {/* GRILLE DES STATISTIQUES GLOBAUX VALORISÉS */}
+      {/* GRILLE DES KPI */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden">
           <div className="relative z-10">
@@ -190,7 +221,7 @@ export default function StockPage() {
         {/* ========================================== */}
         <div className="space-y-3">
           <h2 className="font-serif font-bold text-lg text-slate-800 flex items-center gap-2">
-            <Scissors size={20} className="text-indigo-500" /> Rouleaux de Tissus
+            <Scissors size={20} className="text-indigo-500" /> Tissus
           </h2>
           <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
             <table className="w-full text-left text-xs">
@@ -208,7 +239,6 @@ export default function StockPage() {
                 ) : filteredFabrics.map((f) => {
                   const isMeter = f.unit === 'METER'
                   const threshold = isMeter ? Number(f.alertThresholdMeters) : Number(f.alertThresholdUnits)
-                  // Calcul via lots (ou fallback)
                   const totalStock = f.lots ? f.lots.reduce((s: number, l: any) => s + l.quantityLeft, 0) : (isMeter ? Number(f.stockMeters) : Number(f.stockUnits))
                   const isAlert = totalStock <= threshold
 
@@ -237,7 +267,6 @@ export default function StockPage() {
                               <span className="text-[9px] uppercase tracking-wider">
                                 Achat: <strong className="text-emerald-600">{lot.purchasePriceHT?.toFixed(2)}€</strong>
                               </span>
-                              
                               <div className="mt-1">
                                 <LocationSwitch 
                                   lotId={lot.id} 
@@ -245,13 +274,12 @@ export default function StockPage() {
                                   currentLocation={lot.location} 
                                 />
                               </div>
-                              
                             </div>
                           ))}
                         </div>
                         )}
                       </td>
-                      <td className="px-5 py-3 pr-5">
+                      <td className="px-5 py-3">
                         <div className="flex items-center justify-end gap-1">
                           <button 
                             onClick={async () => {
@@ -276,7 +304,7 @@ export default function StockPage() {
         </div>
 
         {/* ========================================== */}
-        {/* TABLEAU 2 : LES ACCESSOIRES (NOUVEAU) */}
+        {/* TABLEAU 2 : LES ACCESSOIRES */}
         {/* ========================================== */}
         <div className="space-y-3">
           <h2 className="font-serif font-bold text-lg text-slate-800 flex items-center gap-2">
@@ -321,7 +349,6 @@ export default function StockPage() {
                                 <span className="text-[9px] uppercase tracking-wider">
                                   Achat: <strong className="text-emerald-600">{lot.purchasePriceHT?.toFixed(2)}€</strong>
                                 </span>
-                                
                                 <div className="mt-1" onClick={(e) => e.stopPropagation()}>
                                   <LocationSwitch 
                                     lotId={lot.id} 
@@ -329,13 +356,12 @@ export default function StockPage() {
                                     currentLocation={lot.location} 
                                   />
                                 </div>
-                                
                               </div>
                             ))}
                           </div>
                         )}
                       </td>
-                      <td className="px-5 py-3 pr-5 text-right">
+                      <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button 
                             onClick={async () => {
@@ -350,9 +376,6 @@ export default function StockPage() {
                             <Trash2 size={14} />
                           </button>
                         </div>
-                      </td>
-                      <td className="px-5 py-3 pr-5 text-right">
-                        {/* Boutons d'actions */}
                       </td>
                     </tr>
                   )

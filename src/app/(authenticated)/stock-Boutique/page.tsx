@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { getInventoryData, createFinishedProduct, createMerchandise, deleteProduct, updateProduct, updateLotQuantity } from '@/app/_actions/stock-actions'
-import { recordSale, getSalesJournal } from '@/app/_actions/sales-actions'
+import { recordSale, getSalesJournal, getBoutiqueJDV, getBoutiqueJDC } from '@/app/_actions/sales-actions'
 import { Download, AlertTriangle, ShoppingCart, Package, ShoppingBag, Plus, Trash2, Search, Eye, EyeOff, Edit2, Pencil} from 'lucide-react'
 import { adjustProductStock, adjustProductPrice } from '@/app/_actions/boutique-actions'
 import LocationSwitch from '@/components/LocationSwitch'
@@ -20,7 +20,14 @@ export default function StockBoutiquePage() {
   const [discount, setDiscount] = useState(0) // 🆕 Nouvel état pour la remise de la caisse
 
   const [addType, setAddType] = useState<'PF' | 'MA'>('PF')
-  
+
+// 🎯 Remplacement des lignes 25 & 26 :
+const now = new Date()
+const currentYear = now.getFullYear()
+const currentMonth = String(now.getMonth() + 1).padStart(2, '0') // ex: '06' pour juin
+
+const [startDate, setStartDate] = useState(`${currentYear}-${currentMonth}-01`) // '2026-06-01' pur et dur
+const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]) // Aujourd'hui
 
   const [searchQuery, setSearchQuery] = useState('')
   const [hideOutOfStock, setHideOutOfStock] = useState(false)
@@ -90,6 +97,110 @@ export default function StockBoutiquePage() {
 
     setSelectedRef('')
     setSelectedQty(1)
+  }
+
+// 📊 EXPORT COMPTABLE : JOURNAL DES VENTES (JDV)
+  const handleExportJDV = async () => {
+    try {
+      const jdvData = await getBoutiqueJDV({ startDate, endDate })
+      if (!jdvData || jdvData.length === 0) return alert("Aucune vente enregistrée sur cette période.")
+
+      const headers = [
+        "date", "numéro ticket", "type de vente", "motif de remboursement", "nbr d'articles",
+        "CA HT 20%", "TVA collectée 20%", "CA TTC 20%", "encaissement CB", "encaissement Espèces",
+        "encaissement chèque", "remboursement CB", "remboursement especes", "remboursement cheque",
+        "total remboursement", "total remises accordées", "prenom client", "nom client",
+        "entreprise client", "email client", "telephone client", "code postal client", "note client"
+      ]
+      
+      const rows = jdvData.map((row: any) => [
+        row.date,
+        row.ticketId,
+        row.typeVente,
+        row.motifRemboursement,
+        row.nbrArticles,
+        row.caHT20.toFixed(2),
+        row.tva20.toFixed(2),
+        row.caTTC20.toFixed(2),
+        row.cb.toFixed(2),
+        row.especes.toFixed(2),
+        row.cheque.toFixed(2),
+        row.remboursementCB.toFixed(2),
+        row.remboursementEspeces.toFixed(2),
+        row.remboursementCheque.toFixed(2),
+        row.totalRemboursement.toFixed(2),
+        row.totalRemises.toFixed(2),
+        row.clientPrenom,
+        row.clientNom,
+        row.clientEntreprise,
+        row.clientEmail,
+        row.clientTelephone,
+        row.clientCodePostal,
+        row.clientNote
+      ])
+
+      const escapeCSV = (value: any) => value === null || value === undefined ? '""' : `"${value.toString().replace(/"/g, '""')}"`
+      const csvContent = [headers, ...rows].map(r => r.map(escapeCSV).join(";")).join("\n")
+      const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `JDV_Boutique_${startDate}_au_${endDate}.csv`; link.click()
+    } catch (err) {
+      alert("Erreur lors de l'export du JDV")
+    }
+  }
+
+  // 🪙 EXPORT COMPTABLE : JOURNAL DE CAISSE / ENCAISSEMENTS (JDC)
+  const handleExportJDC = async () => {
+    try {
+      const jdcData = await getBoutiqueJDC({ startDate, endDate })
+      if (!jdcData || jdcData.length === 0) return alert("Aucun encaissement sur cette période.")
+
+      const headers = [
+        "jour d'ouveture", "heure d'ouverture", "heure de fermeture", "premier ticket", "dernier ticket",
+        "nbr de ventes", "nbr de remboursements", "ca HT 20%", "TVA 20% collectée", "CA TTC 20%",
+        "encaissement CB", "encaissement Especes", "encaissement Chèque", "Total paiment",
+        "Remboursement CB", "remboursement especes", "Remboursement cheques", "tota lremboursement",
+        "TTC remisé", "especes à l'ouverture", "ventes en especes", "remboursements en especes",
+        "sorties", "especes attendues", "especes constatées", "differences", "nbr d'entrées/sorties", "détail des entrées/sorties"
+      ]
+      
+      const rows = jdcData.map((row: any) => [
+        row.jourOuverture,
+        row.heureOuverture,
+        row.heureFermeture,
+        row.premierTicket,
+        row.dernierTicket,
+        row.nbrVentes,
+        row.nbrRemboursements,
+        row.caHT20.toFixed(2),
+        row.tva20.toFixed(2),
+        row.caTTC20.toFixed(2),
+        row.encaissementCB.toFixed(2),
+        row.encaissementEspeces.toFixed(2),
+        row.encaissementCheque.toFixed(2),
+        row.totalPaiement.toFixed(2),
+        row.remboursementCB.toFixed(2),
+        row.remboursementEspeces.toFixed(2),
+        row.remboursementCheque.toFixed(2),
+        row.totalRemboursement.toFixed(2),
+        row.ttcRemise.toFixed(2),
+        row.especesOuverture.toFixed(2),
+        row.encaissementEspeces.toFixed(2), // Les ventes en espèces re-remplissent la caisse
+        row.remboursementEspeces.toFixed(2),
+        row.sorties.toFixed(2),
+        row.especesAttendues.toFixed(2),
+        row.especesConstatees.toFixed(2),
+        row.difference.toFixed(2),
+        row.nbrEntreesSorties,
+        row.detailEntreesSorties
+      ])
+
+      const escapeCSV = (value: any) => value === null || value === undefined ? '""' : `"${value.toString().replace(/"/g, '""')}"`
+      const csvContent = [headers, ...rows].map(r => r.map(escapeCSV).join(";")).join("\n")
+      const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `JDC_Boutique_${startDate}_au_${endDate}.csv`; link.click()
+    } catch (err) {
+      alert("Erreur lors de l'export du JDC")
+    }
   }
 
   const handleRemoveFromCart = (ref: string) => {
@@ -590,6 +701,43 @@ const handleExportSalesCSV = () => {
                 </div>
               ))}
           </div>
+          {/* 🆕 BARRE D'OUTILS COMPTABLES & RECHERCHE */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-center">
+        
+        {/* Partie gauche : Filtre calendrier pour Betty */}
+        <div className="flex flex-wrap items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+          <span className="text-xs font-black text-slate-500 uppercase tracking-wider pl-1">Période Compta :</span>
+          <input 
+            type="date" 
+            value={startDate} 
+            onChange={(e) => setStartDate(e.target.value)} 
+            className="p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500" 
+          />
+          <span className="text-xs text-slate-400 font-bold">au</span>
+          <input 
+            type="date" 
+            value={endDate} 
+            onChange={(e) => setEndDate(e.target.value)} 
+            className="p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500" 
+          />
+          
+          <div className="flex gap-2 ml-2">
+            <button 
+              onClick={handleExportJDV} 
+              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wide transition-all shadow-sm"
+            >
+              📑 Exporter JDV
+            </button>
+            <button 
+              onClick={handleExportJDC} 
+              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wide transition-all shadow-sm"
+            >
+              🪙 Exporter JDC
+            </button>
+          </div>
+        </div>
+
+      </div>
       </div>
     </div>
     </div>

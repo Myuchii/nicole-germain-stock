@@ -1,12 +1,11 @@
-import { PrismaClient, QuoteStatus } from '@prisma/client'
+import { prisma } from '@/lib/prisma' // Import de l'instance unique sécurisée
+import { QuoteStatus } from '@prisma/client'
 import Link from 'next/link'
 import { CheckCircle, Archive } from 'lucide-react'
 import { OrderCard } from '@/components/OrderCard'
 import SyncWebButton from '@/components/SyncWebButton'
 
 export const dynamic = 'force-dynamic'
-
-const prisma = new PrismaClient()
 
 async function getOrders() {
   return await prisma.quote.findMany({
@@ -42,6 +41,7 @@ interface OrderProps {
     id: string
     customName?: string | null // 🆕 Ajouté pour compatibilité
     discountPercent: number    // 🆕 AJOUTÉ : Propriété requise manquante !
+    quantityUnits: number
     fabric: {
       id: string
       reference: string

@@ -10,7 +10,7 @@ interface Order {
   reference: string
   totalPrice: number
   quantity: number
-  isTTC: boolean // 🆕 Ajouté à l'interface pour réparer le bug du PDF TTC !
+  isTTC: boolean 
   validatedAt: Date | null
   client?: {
     name: string
@@ -22,7 +22,7 @@ interface Order {
   items: Array<{
     id: string
     customName?: string | null 
-    discountPercent: number // 🆕 Indispensable pour la remise sur le PDF
+    discountPercent: number 
     fabric: {
       id: string
       reference: string
@@ -31,6 +31,7 @@ interface Order {
     quantityMeters: number | null
     prodTimeMinutes: number
     sellingPrice: number | null
+    quantityUnits: number | null
   }>
 }
 
@@ -38,10 +39,9 @@ export function OrderCard({ order }: { order: Order }) {
   const [isPending, setIsPending] = useState(false)
 
   const handleDownloadPDF = async () => {
-    // 1. On mappe les vrais produits de la commande avec détection du sur-mesure
     const products = order.items.map(item => {
       const isCustom = !item.fabric || !!item.customName
-
+    
       return {
         family: isCustom ? 'CUSTOM' : 'FITTED', 
         range: isCustom ? '-' : 'BASIQUE',
@@ -54,17 +54,19 @@ export function OrderCard({ order }: { order: Order }) {
         dims: isCustom ? { L: 0, l: 0 } : { L: 200, l: 160, bonnet: 30, diametre: 210 }, 
         mainFabricMeters: item.quantityMeters || 0,
         laborMinutes: item.prodTimeMinutes,
-        totalPriceHT: item.sellingPrice || 0
+        totalPriceHT: item.sellingPrice || 0,
+
+        // 🆕 AJOUTÉ : Chaque ligne de production d'atelier représente 1 pièce unitaire
+        quantity: item.quantityUnits || 1
       }
     })
 
-    // 2. On construit l'objet pour le PDF (FINI LES VALEURS EN DUR !)
     const quoteData = {
       id: order.id,
       reference: order.reference,
       totalPrice: order.totalPrice,
-      isTTC: order.isTTC, // 🆕 Devient dynamique !
-      discountPercent: order.items?.[0]?.discountPercent || 0, // 🆕 Devient dynamique !
+      isTTC: order.isTTC, 
+      discountPercent: order.items?.[0]?.discountPercent || 0, 
       products,
       client: {
         name: order.client?.name || "Client Inconnu",
@@ -75,7 +77,6 @@ export function OrderCard({ order }: { order: Order }) {
       }
     }
 
-    // 3. Génération et téléchargement
     const pdfBlob = await generateQuotePDF(quoteData)
     if (!pdfBlob) return
 
@@ -113,7 +114,6 @@ export function OrderCard({ order }: { order: Order }) {
     }
   }
 
-  // 🆕 FONCTION CLAN DE L'ARCHIVAGE (PROPRE ET SÉCURISÉE CÔTÉ CLIENT)
   const handleArchive = async () => {
     if (!confirm(`Marquer la commande ${order.reference} comme expédiée ?\n\nElle sera classée dans les archives.`)) return
     
@@ -155,20 +155,27 @@ export function OrderCard({ order }: { order: Order }) {
       {/* PRODUITS */}
       <div className="space-y-3 mb-8">
         {order.items.map((item, index) => (
-          <div key={index} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl group-hover:bg-indigo-50 transition-colors">
-            <div>
-              <div className="font-semibold text-slate-800">
-                {item.fabric?.reference || 'SUR-MESURE'}
+          <div key={index} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl group-hover:bg-indigo-50/60 transition-colors">
+            <div className="flex-1 pr-4">
+              {/* 🎯 FIX ICI : On affiche d'abord le nom complet calculé (Type — [REF] Nom + Spécificités) */}
+              <div className="font-bold text-slate-800 text-sm leading-snug">
+                {item.customName || item.fabric?.name || 'Article Libre'}
               </div>
-              <div className="text-sm text-slate-600">
-                {item.fabric?.name || item.customName || 'Article Libre'}
+              
+              {/* 🆕 PETIT BADGE : Donne l'emplacement et le code du rouleau technique pour Nicole */}
+              <div className="text-[11px] text-slate-400 font-medium mt-1 flex items-center gap-1">
+                <span className="px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded-md font-bold text-[10px]">
+                  {item.fabric?.reference || 'SUR-MESURE'}
+                </span>
+                • {item.fabric?.name || 'Aucun tissu lié'}
               </div>
             </div>
-            <div className="text-right">
-              <div className="font-bold text-emerald-600">
+            
+            <div className="text-right whitespace-nowrap">
+              <div className="font-black text-emerald-600 text-base">
                 {item.sellingPrice?.toFixed(2)}€
               </div>
-              <div className="text-xs text-slate-500">
+              <div className="text-[11px] font-medium text-slate-400 mt-0.5">
                 {item.quantityMeters?.toFixed(1)}m | {item.prodTimeMinutes}min
               </div>
             </div>
@@ -194,7 +201,6 @@ export function OrderCard({ order }: { order: Order }) {
           Annuler
         </button>
 
-        {/* 🆕 BOUTON D'ARCHIVAGE NETTOYÉ ET SYNCHRONISÉ */}
         <button 
           onClick={handleArchive}
           disabled={isPending}
