@@ -350,3 +350,16 @@ model VerificationToken {
   expires    DateTime
   @@unique([identifier, token])
 }
+
+model SupplierCatalogItem {
+  id              String   @id @default(uuid())
+  supplierName    String   // Ex: 'FILTES FILATI TESSUTI', 'CAMILLTEX'...
+  reference       String
+  color           String?
+  designation     String?
+  purchasePriceHT Float    // Issu de la colonne 'PRIX HT AU METRE'
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([supplierName, reference]) // Évite les doublons de fiches chez un même fournisseur
+}
