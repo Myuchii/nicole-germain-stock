@@ -41,3 +41,15 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# Fichiers de données réelles Nicole Germain
+REFERENCE FOURNISSEURS TISSUS ET ACCESSOIRES.xlsx
+prisma/data/
+*.csv
+*.xlsx
+
+# Scripts de Seeds
+src/prisma/seed.ts
+prisma/seed-*.ts
+
+*.json
