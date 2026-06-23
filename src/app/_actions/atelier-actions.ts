@@ -166,3 +166,62 @@ export async function startSewingStep(formData: FormData) {
 
   revalidatePath('/atelier')
 }
+
+export async function rollbackToCutting(formData: FormData) {
+  const itemId = formData.get('itemId') as string
+
+  try {
+    // On renvoie juste l'article à la coupe pour que Nicole puisse valider sa deuxième tentative
+    await prisma.quoteItem.update({
+      where: { id: itemId },
+      data: {
+        statusProduction: 'A_COUPER'
+      }
+    })
+
+    revalidatePath('/atelier')
+    return { success: true }
+  } catch (error) {
+    console.error("Erreur lors du retour à la coupe :", error)
+    return { success: false, error: "Impossible de renvoyer l'article à la coupe." }
+  }
+}
+
+export async function validateBulkCuttingStep(formData: FormData) {
+  const itemIds = formData.getAll('itemIds') as string[]
+
+  try {
+    // 1. On récupère toutes les pièces sélectionnées
+    const items = await prisma.quoteItem.findMany({
+      where: { id: { in: itemIds } }
+    })
+
+    // 2. On calcule le métrage global consommé et on identifie le tissu
+    const fabricId = items[0]?.fabricId
+    const totalMeters = items.reduce((sum, item) => sum + (Number(item.quantityMeters) || 0), 0)
+
+    // 3. Bim Bam Boum : On déduit tout le lot d'un seul coup du rouleau
+    if (fabricId && totalMeters > 0) {
+      await prisma.fabric.update({
+        where: { id: fabricId },
+        data: {
+          stockMeters: { decrement: totalMeters }
+        }
+      })
+    }
+
+    // 4. On bascule toutes les fiches d'un coup en couture
+    await prisma.quoteItem.updateMany({
+      where: { id: { in: itemIds } },
+      data: {
+        statusProduction: 'EN_COUTURE'
+      }
+    })
+
+    revalidatePath('/atelier')
+    return { success: true }
+  } catch (error) {
+    console.error("Erreur validation groupée :", error)
+    return { success: false, error: "Impossible de valider le lot." }
+  }
+}

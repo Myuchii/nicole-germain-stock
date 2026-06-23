@@ -2,8 +2,7 @@
 import { useState, useEffect } from 'react'
 import { getInventoryData, createFinishedProduct, createMerchandise, deleteProduct, updateProduct, updateLotQuantity } from '@/app/_actions/stock-actions'
 import { recordSale, getSalesJournal, getBoutiqueJDV, getBoutiqueJDC } from '@/app/_actions/sales-actions'
-import { Download, AlertTriangle, ShoppingCart, Package, ShoppingBag, Plus, Trash2, Search, Eye, EyeOff, Edit2, Pencil} from 'lucide-react'
-import { adjustProductStock, adjustProductPrice } from '@/app/_actions/boutique-actions'
+import { Download, AlertTriangle, ShoppingCart, Package, ShoppingBag, Plus, Trash2, Search, Eye, EyeOff, Edit2, Pencil, Calendar, FileSpreadsheet, Coins } from 'lucide-react'
 import LocationSwitch from '@/components/LocationSwitch'
 
 export default function StockBoutiquePage() {
@@ -17,23 +16,21 @@ export default function StockBoutiquePage() {
   const [cart, setCart] = useState<any[]>([]) 
   
   const [applyVAT, setApplyVAT] = useState(true)
-  const [discount, setDiscount] = useState(0) // 🆕 Nouvel état pour la remise de la caisse
+  const [discount, setDiscount] = useState(0)
 
   const [addType, setAddType] = useState<'PF' | 'MA'>('PF')
 
-// 🎯 Remplacement des lignes 25 & 26 :
-const now = new Date()
-const currentYear = now.getFullYear()
-const currentMonth = String(now.getMonth() + 1).padStart(2, '0') // ex: '06' pour juin
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const currentMonth = String(now.getMonth() + 1).padStart(2, '0')
 
-const [startDate, setStartDate] = useState(`${currentYear}-${currentMonth}-01`) // '2026-06-01' pur et dur
-const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]) // Aujourd'hui
+  const [startDate, setStartDate] = useState(`${currentYear}-${currentMonth}-01`)
+  const [endDate, setEndDate] = useState(now.toISOString().split('T')[0])
 
   const [searchQuery, setSearchQuery] = useState('')
   const [hideOutOfStock, setHideOutOfStock] = useState(false)
   
   const [editingProduct, setEditingProduct] = useState<any>(null)
-  // 🆕 État pour modifier la quantité d'un lot spécifique
   const [editingLot, setEditingLot] = useState<{id: string, type: 'PF' | 'MA', currentQty: number, name: string, price: number} | null>(null)
 
   useEffect(() => {
@@ -60,9 +57,6 @@ const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]) // Aujou
 
   if (loading) return <div className="p-8 text-center font-bold text-slate-500">Chargement de l'espace boutique...</div>
 
-  // ==========================================
-  // 🛒 GESTION DU PANIER LOCAL
-  // ==========================================
   const handleAddToInvoice = (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedRef) return
@@ -99,7 +93,6 @@ const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]) // Aujou
     setSelectedQty(1)
   }
 
-// 📊 EXPORT COMPTABLE : JOURNAL DES VENTES (JDV)
   const handleExportJDV = async () => {
     try {
       const jdvData = await getBoutiqueJDV({ startDate, endDate })
@@ -114,29 +107,13 @@ const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]) // Aujou
       ]
       
       const rows = jdvData.map((row: any) => [
-        row.date,
-        row.ticketId,
-        row.typeVente,
-        row.motifRemboursement,
-        row.nbrArticles,
-        row.caHT20.toFixed(2),
-        row.tva20.toFixed(2),
-        row.caTTC20.toFixed(2),
-        row.cb.toFixed(2),
-        row.especes.toFixed(2),
-        row.cheque.toFixed(2),
-        row.remboursementCB.toFixed(2),
-        row.remboursementEspeces.toFixed(2),
-        row.remboursementCheque.toFixed(2),
-        row.totalRemboursement.toFixed(2),
-        row.totalRemises.toFixed(2),
-        row.clientPrenom,
-        row.clientNom,
-        row.clientEntreprise,
-        row.clientEmail,
-        row.clientTelephone,
-        row.clientCodePostal,
-        row.clientNote
+        row.date, row.ticketId, row.typeVente, row.motifRemboursement, row.nbrArticles,
+        row.caHT20.toFixed(2), row.tva20.toFixed(2), row.caTTC20.toFixed(2), row.cb.toFixed(2),
+        row.especes.toFixed(2), row.cheque.toFixed(2), row.remboursementCB.toFixed(2),
+        row.remboursementEspeces.toFixed(2), row.remboursementCheque.toFixed(2),
+        row.totalRemboursement.toFixed(2), row.totalRemises.toFixed(2), row.clientPrenom,
+        row.clientNom, row.clientEntreprise, row.clientEmail, row.clientTelephone,
+        row.clientCodePostal, row.clientNote
       ])
 
       const escapeCSV = (value: any) => value === null || value === undefined ? '""' : `"${value.toString().replace(/"/g, '""')}"`
@@ -148,7 +125,6 @@ const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]) // Aujou
     }
   }
 
-  // 🪙 EXPORT COMPTABLE : JOURNAL DE CAISSE / ENCAISSEMENTS (JDC)
   const handleExportJDC = async () => {
     try {
       const jdcData = await getBoutiqueJDC({ startDate, endDate })
@@ -164,34 +140,14 @@ const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]) // Aujou
       ]
       
       const rows = jdcData.map((row: any) => [
-        row.jourOuverture,
-        row.heureOuverture,
-        row.heureFermeture,
-        row.premierTicket,
-        row.dernierTicket,
-        row.nbrVentes,
-        row.nbrRemboursements,
-        row.caHT20.toFixed(2),
-        row.tva20.toFixed(2),
-        row.caTTC20.toFixed(2),
-        row.encaissementCB.toFixed(2),
-        row.encaissementEspeces.toFixed(2),
-        row.encaissementCheque.toFixed(2),
-        row.totalPaiement.toFixed(2),
-        row.remboursementCB.toFixed(2),
-        row.remboursementEspeces.toFixed(2),
-        row.remboursementCheque.toFixed(2),
-        row.totalRemboursement.toFixed(2),
-        row.ttcRemise.toFixed(2),
-        row.especesOuverture.toFixed(2),
-        row.encaissementEspeces.toFixed(2), // Les ventes en espèces re-remplissent la caisse
-        row.remboursementEspeces.toFixed(2),
-        row.sorties.toFixed(2),
-        row.especesAttendues.toFixed(2),
-        row.especesConstatees.toFixed(2),
-        row.difference.toFixed(2),
-        row.nbrEntreesSorties,
-        row.detailEntreesSorties
+        row.jourOuverture, row.heureOuverture, row.heureFermeture, row.premierTicket, row.dernierTicket,
+        row.nbrVentes, row.nbrRemboursements, row.caHT20.toFixed(2), row.tva20.toFixed(2), row.caTTC20.toFixed(2),
+        row.encaissementCB.toFixed(2), row.encaissementEspeces.toFixed(2), row.encaissementCheque.toFixed(2),
+        row.totalPaiement.toFixed(2), row.remboursementCB.toFixed(2), row.remboursementEspeces.toFixed(2),
+        row.remboursementCheque.toFixed(2), row.totalRemboursement.toFixed(2), row.ttcRemise.toFixed(2),
+        row.especesOuverture.toFixed(2), row.encaissementEspeces.toFixed(2), row.remboursementEspeces.toFixed(2),
+        row.sorties.toFixed(2), row.especesAttendues.toFixed(2), row.especesConstatees.toFixed(2),
+        row.difference.toFixed(2), row.nbrEntreesSorties, row.detailEntreesSorties
       ])
 
       const escapeCSV = (value: any) => value === null || value === undefined ? '""' : `"${value.toString().replace(/"/g, '""')}"`
@@ -207,7 +163,6 @@ const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]) // Aujou
     setCart(cart.filter(item => item.reference !== ref))
   }
 
-  // 🆕 Nouveaux calculs dynamiques
   const cartTotalHT = cart.reduce((sum, item) => sum + (item.priceHT * item.quantity), 0)
   const cartTotalHTWithDiscount = cartTotalHT * (1 - discount / 100)
   const cartTotalTTC = applyVAT ? cartTotalHTWithDiscount * 1.20 : cartTotalHTWithDiscount
@@ -253,10 +208,9 @@ const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]) // Aujou
     const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `Inventaire_Boutique_Lots.csv`; link.click();
   }
 
-const handleExportSalesCSV = () => {
+  const handleExportSalesCSV = () => {
     if (!journal || journal.length === 0) return alert("Le journal de caisse est vide !")
 
-    // 🆕 Ajout de la colonne "Montant Remise HT (€)" (Le manque à gagner)
     const headers = [
       "Date", "Heure", "ID Ticket", "Type Flux", "Référence Article", "Désignation", 
       "Quantité Vendue", "Prix Unitaire Base HT (€)", "Total Ligne Brut HT (€)", 
@@ -269,16 +223,15 @@ const handleExportSalesCSV = () => {
       const isTTC = sale.isTTC || (!sale.isTaxExempt && sale.taxRate > 0) 
       const tvaPercent = isTTC ? 20 : 0
       
-      const htRemise = sale.totalPriceHT // Le prix net remisé en BDD
+      const htRemise = sale.totalPriceHT 
       const ttc = sale.totalPriceTTC || (isTTC ? htRemise * 1.2 : htRemise)
       const montantTva = ttc - htRemise
 
       const unitPrice = sale.unitPriceHT || (sale.quantitySold > 0 ? htRemise / sale.quantitySold : 0)
       const remisePercent = sale.discountPercent || 0
       
-      // Calcul du Brut et du manque à gagner HT
       const totalBrutHT = unitPrice * sale.quantitySold
-      const montantRemiseHT = totalBrutHT - htRemise // 🆕 La différence réclamée !
+      const montantRemiseHT = totalBrutHT - htRemise 
 
       return [
         dateObj.toLocaleDateString('fr-FR'),
@@ -291,7 +244,7 @@ const handleExportSalesCSV = () => {
         unitPrice.toFixed(2),
         totalBrutHT.toFixed(2),
         `${remisePercent}%`,
-        montantRemiseHT.toFixed(2),  // 🆕 Ce qu'on aurait pu gagner mais qu'on a "perdu" en HT
+        montantRemiseHT.toFixed(2),  
         htRemise.toFixed(2),
         `${tvaPercent}%`,
         montantTva.toFixed(2),
@@ -322,7 +275,9 @@ const handleExportSalesCSV = () => {
   }, {})).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-8 space-y-8 max-w-[1600px] mx-auto">
+      
+      {/* HEADER */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-serif font-bold text-slate-900">🏪 Espace Boutique & Ventes Directes</h1>
@@ -333,6 +288,7 @@ const handleExportSalesCSV = () => {
         </button>
       </div>
 
+      {/* FILTRES & RECHERCHE CATALOGUE */}
       <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm justify-between items-center">
         <div className="relative w-full md:w-96">
           <Search className="absolute left-3 top-3 text-slate-400" size={18} />
@@ -343,7 +299,8 @@ const handleExportSalesCSV = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      {/* DRAPEAUX STATS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden">
           <div className="relative z-10">
             <p className="text-xs font-bold text-slate-400 uppercase">Valeur Marchande (HT)</p>
@@ -364,9 +321,9 @@ const handleExportSalesCSV = () => {
         </div>
       </div>
 
+      {/* GRILLES STOCKS SÉPARÉS */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        
-        {/* TABLEAU ② : PRODUITS FINIS */}
+        {/* PRODUITS FINIS */}
         <div className="space-y-3">
           <h2 className="font-serif font-bold text-lg text-slate-800 flex items-center gap-2"><Package size={20} className="text-indigo-500" /> Stock Produits Finis</h2>
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
@@ -388,23 +345,18 @@ const handleExportSalesCSV = () => {
                         {p.lots?.filter((l: any) => l.quantityLeft > 0).length === 0 ? <span className="text-red-500 font-bold">Rupture</span> : (
                           <div className="flex flex-wrap gap-1">
                             {p.lots?.filter((l: any) => l.quantityLeft > 0).map((lot: any) => (
-                              // 🆕 LOT CLIQUABLE POUR MODIFICATION
-                              <div key={lot.id} onClick={() => setEditingLot({id: lot.id, type: 'PF', currentQty: lot.quantityLeft, name: p.name, price: lot.sellingPriceHT})} className="bg-slate-50 border border-slate-200 p-1.5 rounded-lg flex flex-col gap-0.5 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors group relative">
+                              <div key={lot.id} onClick={() => setEditingLot({id: lot.id, type: 'PF', currentQty: lot.quantityLeft, name: p.name, price: lot.sellingPriceHT})} className="bg-slate-50 border border-slate-200 p-1.5 rounded-lg flex flex-col gap-0.5 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors group">
                                 <span className="text-slate-700 font-black group-hover:text-indigo-700">{lot.quantityLeft} pcs</span>
                                 <span className="text-[9px] uppercase tracking-wider">Vente: <strong>{lot.sellingPriceHT?.toFixed(2)}€</strong></span>
                                 <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                                  <LocationSwitch 
-                                    lotId={lot.id} 
-                                    itemType="FINISHED_PRODUCT" 
-                                    currentLocation={lot.location} 
-                                  />
+                                  <LocationSwitch lotId={lot.id} itemType="FINISHED_PRODUCT" currentLocation={lot.location} />
                                 </div>
                               </div>
                             ))}
                           </div>
                         )}
                       </td>
-                      <td className="p-3 pr-5">
+                      <td className="p-3 pr-5 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => setEditingProduct({ ...p, type: 'PF' })} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"><Edit2 size={14} /></button>
                           <button onClick={() => handleDeleteProduct(p.id, 'PF')} className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"><Trash2 size={14} /></button>
@@ -418,14 +370,14 @@ const handleExportSalesCSV = () => {
           </div>
         </div>
 
-        {/* TABLEAU ③ : MARCHANDISES */}
+        {/* MARCHANDISES */}
         <div className="space-y-3">
           <h2 className="font-serif font-bold text-lg text-slate-800 flex items-center gap-2"><ShoppingBag size={20} className="text-emerald-500" /> Stock Marchandises</h2>
           <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100 font-bold text-slate-400 uppercase">
-                  <th className="p-3 pl-5">Réf</th><th className="p-3">Désignation</th><th className="p-3 text-center">Total</th><th className="p-3">Lots Actifs (Clic = Modif)</th><th className="p-3 text-right pr-5">Actions</th>
+                  <th className="p-3 w-12 text-center">Choix</th><th className="p-3">Référence</th><th className="p-3">Désignation</th><th className="p-3">Lots Actifs (Clic = Modif)</th><th className="p-3 text-right pr-5">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
@@ -440,23 +392,18 @@ const handleExportSalesCSV = () => {
                         {m.lots?.filter((l: any) => l.quantityLeft > 0).length === 0 ? <span className="text-red-500 font-bold">Rupture</span> : (
                           <div className="flex flex-wrap gap-1">
                             {m.lots?.filter((l: any) => l.quantityLeft > 0).map((lot: any) => (
-                              // 🆕 LOT CLIQUABLE POUR MODIFICATION
                               <div key={lot.id} onClick={() => setEditingLot({id: lot.id, type: 'MA', currentQty: lot.quantityLeft, name: m.name, price: lot.sellingPriceHT})} className="bg-slate-50 border border-slate-200 p-1.5 rounded-lg flex flex-col gap-0.5 cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition-colors group">
                                 <span className="text-slate-700 font-black group-hover:text-emerald-700">{lot.quantityLeft} pcs</span>
                                 <span className="text-[9px] uppercase tracking-wider">Achat: <strong className="text-emerald-600">{lot.purchasePriceHT?.toFixed(2)}€</strong> | Vente: <strong className="text-indigo-600">{lot.sellingPriceHT?.toFixed(2)}€</strong></span>
                                 <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-                                  <LocationSwitch 
-                                    lotId={lot.id} 
-                                    itemType="MERCHANDISE" 
-                                    currentLocation={lot.location} 
-                                  />
+                                  <LocationSwitch lotId={lot.id} itemType="MERCHANDISE" currentLocation={lot.location} />
                                 </div>
                               </div>
                             ))}
                           </div>
                         )}
                       </td>
-                      <td className="p-3 pr-5">
+                      <td className="p-3 pr-5 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button onClick={() => setEditingProduct({ ...m, type: 'MA' })} className="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50 transition-colors"><Edit2 size={14} /></button>
                           <button onClick={() => handleDeleteProduct(m.id, 'MA')} className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"><Trash2 size={14} /></button>
@@ -471,9 +418,10 @@ const handleExportSalesCSV = () => {
         </div>
       </div>
 
+      {/* SECTIONS INFÉRIEURES */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-4">
         
-        {/* BLOC 1 : CAISSE ENREGISTREUSE */}
+        {/* CAISSE ENREGISTREUSE */}
         <div className="bg-slate-950 p-6 rounded-[2.5rem] text-white space-y-4 shadow-xl self-start">
           <div className="flex items-center gap-2 text-indigo-400 font-bold text-sm">
             <ShoppingCart size={18} /> Caisse enregistreuse multi-articles
@@ -530,14 +478,12 @@ const handleExportSalesCSV = () => {
           <form action={async (formData) => {
             if(cart.length === 0) return alert("Le panier est vide !")
             formData.append('cart', JSON.stringify(cart)) 
-            formData.append('applyVAT', applyVAT.toString()) // 🆕 On envoie l'info TVA au serveur
+            formData.append('applyVAT', applyVAT.toString()) 
             formData.append('discountPercent', discount.toString())
             const res = await recordSale(formData)
             if(!res.success) alert(res.error)
             else { setCart([]); window.location.reload(); }
           }} className="space-y-3 pt-2">
-            
-            {/* 🆕 TOGGLE TVA MAGIQUE */}
             <label className="flex items-center gap-3 p-3 bg-slate-900 rounded-xl border border-slate-800 cursor-pointer hover:bg-slate-800 transition-colors">
               <input type="checkbox" checked={applyVAT} onChange={e => setApplyVAT(e.target.checked)} className="rounded text-indigo-500 focus:ring-indigo-500 h-4 w-4 bg-slate-800 border-slate-700" />
               <div className="text-xs">
@@ -546,19 +492,10 @@ const handleExportSalesCSV = () => {
               </div>
             </label>
 
-            {/* 🆕 REMISE GLOBALE DU TICKET */}
             <div className="flex items-center gap-3 p-3 bg-slate-900 rounded-xl border border-slate-800">
               <span className="text-xs font-bold text-slate-400 whitespace-nowrap">Remise (%) :</span>
               <div className="relative flex-1">
-                <input 
-                  type="number" 
-                  value={discount || ''}
-                  onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
-                  min="0" 
-                  max="100" 
-                  placeholder="0"
-                  className="w-full text-right pr-7 py-1.5 px-2 border border-slate-800 bg-slate-950 text-white rounded-lg text-sm font-bold focus:outline-none focus:border-indigo-500"
-                />
+                <input type="number" value={discount || ''} onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)} min="0" max="100" placeholder="0" className="w-full text-right pr-7 py-1.5 px-2 border border-slate-800 bg-slate-950 text-white rounded-lg text-sm font-bold focus:outline-none focus:border-indigo-500" />
                 <span className="absolute right-3 top-2 text-xs font-bold text-slate-500">%</span>
               </div>
             </div>
@@ -583,13 +520,13 @@ const handleExportSalesCSV = () => {
           </form>
         </div>
 
-        {/* BLOC 2 : RÉCEPTION DE STOCK */}
+        {/* RECEPTION DE STOCK */}
         <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 space-y-4 shadow-xl self-start">
           <h3 className="font-serif font-bold text-xl text-slate-900">Réception de Stock</h3>
           
           <div className="grid grid-cols-2 bg-slate-100 p-1 rounded-xl gap-1">
-            <button onClick={() => setAddType('PF')} className={`py-2 text-xs font-bold rounded-lg transition-all ${addType === 'PF' ? 'bg-slate-900 text-white shadow' : 'text-slate-500 hover:text-slate-900'}`}>Confection</button>
-            <button onClick={() => setAddType('MA')} className={`py-2 text-xs font-bold rounded-lg transition-all ${addType === 'MA' ? 'bg-slate-900 text-white shadow' : 'text-slate-500 hover:text-slate-900'}`}>Marchandise</button>
+            <button onClick={() => setAddType('PF')} className={`py-2 text-xs font-bold rounded-lg transition-all ${addType === 'PF' ? 'bg-slate-900 text-white shadow' : 'text-slate-500 hover:bg-slate-900'}`}>Confection</button>
+            <button onClick={() => setAddType('MA')} className={`py-2 text-xs font-bold rounded-lg transition-all ${addType === 'MA' ? 'bg-slate-900 text-white shadow' : 'text-slate-500 hover:bg-slate-900'}`}>Marchandise</button>
           </div>
 
           <form action={async (formData) => {
@@ -620,27 +557,98 @@ const handleExportSalesCSV = () => {
           </form>
         </div>
 
-      {/* ✏️ MODAL PRODUIT CLASSIQUE */}
+        {/* 📂 NOUVEAU BLOC CENTRALISÉ : CONSOLE COMPTABLE POUR JDC, JDV & JV */}
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-xl space-y-6 self-start flex flex-col justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-indigo-600 font-black text-xs uppercase tracking-wider">
+              <Calendar size={16} /> Rapports Comptables
+            </div>
+            <h3 className="font-serif font-bold text-xl text-slate-900">Période d'Audit</h3>
+            <p className="text-xs text-slate-400">Sélectionnez la fenêtre temporelle pour compiler et exporter vos journaux.</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Du</label>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Au</label>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500" />
+            </div>
+          </div>
+
+          {/* ⚡ LA CENTRALE DES TROIS EXPORTS COMBINÉS */}
+          <div className="space-y-2.5 pt-2">
+            <button onClick={handleExportSalesCSV} className="w-full py-3 px-4 bg-slate-900 hover:bg-indigo-600 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-between group">
+              <span className="flex items-center gap-2"><FileSpreadsheet size={15} className="text-indigo-400" />Journal Global (JV)</span>
+              <Download size={14} className="opacity-60 group-hover:translate-y-0.5 transition-transform" />
+            </button>
+
+            <button onClick={handleExportJDV} className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-between group">
+              <span className="flex items-center gap-2"><FileSpreadsheet size={15} className="text-white" />Journal des Ventes (JDV)</span>
+              <Download size={14} className="opacity-60 group-hover:translate-y-0.5 transition-transform" />
+            </button>
+
+            <button onClick={handleExportJDC} className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-between group">
+              <span className="flex items-center gap-2"><Coins size={15} className="text-emerald-300" />Journal de Caisse (JDC)</span>
+              <Download size={14} className="opacity-60 group-hover:translate-y-0.5 transition-transform" />
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      {/* JOURNAL DE CAISSE INTERACTIF (Full width en bas de page) */}
+      <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
+        <div className="flex justify-between items-center border-b border-slate-50 pb-2">
+          <div>
+            <h3 className="font-serif font-bold text-lg text-slate-900">📖 Flux de Caisse récents</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Historique brut des encaissements par tickets de vente directe en magasin.</p>
+          </div>
+        </div>
+        
+        <div className="max-h-[380px] overflow-y-auto space-y-3 pr-2">
+          {groupedJournalArray.map((ticket: any) => (
+            <div key={ticket.ticketId + ticket.createdAt} className="bg-slate-50 rounded-xl p-3 border border-slate-100 shadow-sm">
+              <div className="flex justify-between items-center border-b border-slate-200 pb-2 mb-2">
+                <div>
+                  <span className="font-bold text-slate-800 text-xs">{ticket.ticketId !== "Vente isolée" ? `🧾 Ticket ${ticket.ticketId}` : "🧾 Ancienne Vente"}</span>
+                  <span className="text-[10px] text-slate-500 ml-2">{new Date(ticket.createdAt).toLocaleDateString('fr-FR')}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-500 font-bold mr-2">MOD: {ticket.paymentMethod}</span>
+                  <span className="font-black text-indigo-600 text-sm">
+                    +{(ticket.items[0]?.isTTC ? ticket.items.reduce((s:number, i:any)=>s+i.totalPriceTTC,0) : ticket.totalTicketHT).toFixed(2)} €
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-1.5 pl-1">
+                {ticket.items.map((item: any) => (
+                  <div key={item.id} className="flex justify-between items-center text-[11px]">
+                    <div className="flex items-center gap-1.5"><span className="text-slate-600"><strong>{item.quantitySold}x</strong> {item.name}</span></div>
+                    <span className="text-slate-700 font-bold">{item.isTTC ? item.totalPriceTTC?.toFixed(2) : item.totalPriceHT?.toFixed(2)} €</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* MODALS */}
       {editingProduct && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl relative">
             <h3 className="font-serif font-bold text-xl mb-1 text-slate-900">Modifier l'article</h3>
-            <form action={async (formData) => {
-              formData.append('id', editingProduct.id); formData.append('type', editingProduct.type)
-              const res = await updateProduct(formData)
-              if (!res.success) alert(res.error); else window.location.reload()
-            }} className="space-y-4 text-sm text-slate-700 font-bold">
-              {/* Contenu abrégé pour l'espace, identique à avant */}
-              <button type="button" onClick={() => setEditingProduct(null)} className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl text-xs uppercase">Annuler</button>
-            </form>
+            <button type="button" onClick={() => setEditingProduct(null)} className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl text-xs uppercase">Annuler</button>
           </div>
         </div>
       )}
 
-      {/* 🆕 MODAL DE MODIFICATION DE LOT */}
       {editingLot && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl relative transform transition-all scale-100">
+          <div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl relative">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-3 bg-amber-100 text-amber-600 rounded-2xl"><Pencil size={24}/></div>
               <div>
@@ -648,7 +656,6 @@ const handleExportSalesCSV = () => {
                 <p className="text-[10px] text-slate-500 uppercase tracking-wider">{editingLot.name}</p>
               </div>
             </div>
-            
             <form action={async (formData) => {
               const res = await updateLotQuantity(editingLot.id, editingLot.type, Number(formData.get('quantity')))
               if (!res.success) alert(res.error); else window.location.reload()
@@ -661,85 +668,14 @@ const handleExportSalesCSV = () => {
                 </div>
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setEditingLot(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors text-xs uppercase">Annuler</button>
-                <button type="submit" className="flex-1 py-3 bg-amber-500 text-white font-black rounded-xl hover:bg-amber-600 transition-colors text-xs uppercase shadow-lg shadow-amber-500/30">Mettre à jour</button>
+                <button type="button" onClick={() => setEditingLot(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs uppercase">Annuler</button>
+                <button type="submit" className="flex-1 py-3 bg-amber-500 text-white font-black rounded-xl text-xs uppercase shadow-lg shadow-amber-500/30">Mettre à jour</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
-          <div className="flex justify-between items-center border-b border-slate-50 pb-2">
-            <div><h3 className="font-serif font-bold text-lg text-slate-900">📖 Journal de Caisse</h3></div>
-            <button onClick={handleExportSalesCSV} className="px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-900 hover:text-white rounded-xl font-bold flex items-center gap-1.5 text-xs shadow-sm"><Download size={12} /> Export Compta</button>
-          </div>
-          <div className="max-h-[380px] overflow-y-auto space-y-3 pr-2">
-            {groupedJournalArray.map((ticket: any) => (
-                <div key={ticket.ticketId + ticket.createdAt} className="bg-slate-50 rounded-xl p-3 border border-slate-100 shadow-sm">
-                  <div className="flex justify-between items-center border-b border-slate-200 pb-2 mb-2">
-                    <div>
-                      <span className="font-bold text-slate-800 text-xs">{ticket.ticketId !== "Vente isolée" ? `🧾 Ticket ${ticket.ticketId}` : "🧾 Ancienne Vente"}</span>
-                      <span className="text-[10px] text-slate-500 ml-2">{new Date(ticket.createdAt).toLocaleDateString('fr-FR')}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[10px] text-slate-500 font-bold mr-2">MOD: {ticket.paymentMethod}</span>
-                      {/* 🆕 On affiche le bon prix selon s'il y a de la TVA */}
-                      <span className="font-black text-indigo-600 text-sm">
-                        +{(ticket.items[0]?.isTTC ? ticket.items.reduce((s:number, i:any)=>s+i.totalPriceTTC,0) : ticket.totalTicketHT).toFixed(2)} €
-                      </span>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5 pl-1">
-                    {ticket.items.map((item: any) => (
-                      <div key={item.id} className="flex justify-between items-center text-[11px]">
-                        <div className="flex items-center gap-1.5"><span className="text-slate-600"><strong>{item.quantitySold}x</strong> {item.name}</span></div>
-                        <span className="text-slate-700 font-bold">{item.isTTC ? item.totalPriceTTC?.toFixed(2) : item.totalPriceHT?.toFixed(2)} €</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-          </div>
-          {/* 🆕 BARRE D'OUTILS COMPTABLES & RECHERCHE */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-center">
-        
-        {/* Partie gauche : Filtre calendrier pour Betty */}
-        <div className="flex flex-wrap items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-          <span className="text-xs font-black text-slate-500 uppercase tracking-wider pl-1">Période Compta :</span>
-          <input 
-            type="date" 
-            value={startDate} 
-            onChange={(e) => setStartDate(e.target.value)} 
-            className="p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500" 
-          />
-          <span className="text-xs text-slate-400 font-bold">au</span>
-          <input 
-            type="date" 
-            value={endDate} 
-            onChange={(e) => setEndDate(e.target.value)} 
-            className="p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500" 
-          />
-          
-          <div className="flex gap-2 ml-2">
-            <button 
-              onClick={handleExportJDV} 
-              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wide transition-all shadow-sm"
-            >
-              📑 Exporter JDV
-            </button>
-            <button 
-              onClick={handleExportJDC} 
-              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wide transition-all shadow-sm"
-            >
-              🪙 Exporter JDC
-            </button>
-          </div>
-        </div>
-
-      </div>
-      </div>
-    </div>
     </div>
   )
 }

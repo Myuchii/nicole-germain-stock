@@ -8,6 +8,7 @@ interface Product {
   fabric: {
     reference: string
     name: string
+    color?: string
     pricePerMeter: number
   }
   dims: {
@@ -91,7 +92,7 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
 
   // --- 3. INFOS DOCUMENT ---
   doc.setFont('helvetica', 'bold').setFontSize(14)
-  doc.text(`DEVIS TECHNIQUE SUR MESURE`, 20, 80)
+  doc.text(`DEVIS COMMERCIAL SUR MESURE`, 20, 80)
   doc.setFont('helvetica', 'normal').setFontSize(10)
   doc.text(`Référence : ${data.reference}`, 20, 87)
   doc.text(`Date d'émission : ${new Date().toLocaleDateString('fr-FR')}`, 20, 92)
@@ -99,50 +100,63 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
   doc.setLineWidth(0.5).setDrawColor(99, 102, 241)
   doc.line(20, 97, 190, 97)
 
-  // --- 4. TABLEAU DES PRODUITS ---
-  const tableData = data.products.map((product, index) => {
+  // --- 4. TABLEAU DES PRODUITS (STRUCTURE DU CROQUIS) ---
+  const tableData = data.products.map((product) => {
     let labelFamily = product.family
     if (product.family === 'FITTED') labelFamily = 'Drap Housse'
-    if (product.family === 'ENVELOPE') labelFamily = 'Housse Couette / Taie'
+    if (product.family === 'ENVELOPE') labelFamily = 'Housse Couette'
     if (product.family === 'FLAT') labelFamily = 'Drap Plat'
     if (product.family === 'BOLSTER') labelFamily = 'Traversin'
     if (product.family === 'ROUND') labelFamily = 'Ouvrage Rond'
+    if (product.family === 'CUSTOM') labelFamily = 'Sur-mesure'
 
-    const ouvrageStr = product.customName ? product.customName : `${labelFamily}\nGamme: ${product.range}`
+    // 1. Gestion du libellé Ouvrage
+    const ouvrageStr = product.customName ? product.customName : labelFamily
+
+    // 2. Dimensions
     const dimensionsStr = product.family === 'ROUND' 
       ? `Diam. ${product.dims.diametre || 210}cm`
-      : (product.dims.L === 0 && product.dims.l === 0) ? 'Voir descriptif' : `${product.dims.L}×${product.dims.l}${product.dims.bonnet ? ` (B.${product.dims.bonnet}cm)` : ''}`
+      : (product.dims.L === 0 && product.dims.l === 0) ? 'Sur-mesure' : `${product.dims.L}×${product.dims.l}${product.dims.bonnet ? ` (B.${product.dims.bonnet}cm)` : ''}`
 
-    // 🎯 FIX SOUSTRACTION : Si la commande est TTC, on divise le montant de la ligne par 1.20 pour Nicole
-    const rowPriceRaw = product.totalPriceHT || 0
-    const rowPriceHT = data.isTTC ? (rowPriceRaw / 1.20) : rowPriceRaw
+    // 3. Extraction Qualité & Couleur
+    const qualiteStr = `${product.range}\n(${product.fabric.name.split('-')[0].trim()})`
+    const colorStr = product.fabric.color 
+      ? product.fabric.color.toUpperCase() 
+      : (product.fabric.name.split('-')[1]?.trim().toUpperCase() || 'STANDARD')
+
+    // 4. Calcul des montants HT stables par ligne
+    const qte = product.quantity || 1
+    const totalRowPriceRaw = product.totalPriceHT || 0
+    const ptHT = data.isTTC ? (totalRowPriceRaw / 1.20) : totalRowPriceRaw
+    const puHT = ptHT / qte
 
     return [
-      `${index + 1}`,
-      ouvrageStr,
-      `${product.quantity || 1}`,
-      `${product.fabric.reference}\n${product.fabric.name}`,
-      dimensionsStr,
-      `${product.mainFabricMeters.toFixed(1)} m`,
-      `${product.laborMinutes} min`,
-      `${rowPriceHT.toFixed(2)} €` // Affiche toujours du HT propre dans les lignes
+      ouvrageStr,            // 1. OUVRAGE
+      `${qte}`,              // 2. QTÉ
+      dimensionsStr,         // 3. DIMENS°
+      qualiteStr,            // 4. QUALITÉ
+      colorStr,              // 5. COULEUR
+      `${puHT.toFixed(2)} €`,// 6. PU HT
+      `${ptHT.toFixed(2)} €` // 7. PT HT
     ]
   })
 
   autoTable(doc, {
     startY: 104, 
-    head: [['#', 'OUVRAGE', 'QTÉ', 'MATIÈRE', 'DIMENSIONS', 'MÉTRAGE', 'COUTURE', 'MONTANT']],
+    // 🎯 En-têtes calqués sur ton croquis papier
+    head: [['OUVRAGE', 'QTÉ', 'DIMENS°', 'QUALITÉ', 'COULEUR', 'PU HT', 'PT HT']],
     body: tableData,
     theme: 'striped',
-    headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', fontSize: 9 },
-    bodyStyles: { fontSize: 9, valign: 'middle' },
+    headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
+    bodyStyles: { fontSize: 8.5, valign: 'middle' },
     columnStyles: { 
-      0: { halign: 'center', cellWidth: 8 }, 
-      1: { cellWidth: 48 }, 
-      2: { halign: 'center', cellWidth: 12, fontStyle: 'bold' }, 
-      5: { halign: 'right' }, 
-      6: { halign: 'center' }, 
-      7: { halign: 'right', fontStyle: 'bold' } 
+      0: { halign: 'left', cellWidth: 35 },   // Ouvrage
+      1: { halign: 'center', cellWidth: 12 }, // Qté
+      2: { halign: 'center', cellWidth: 28 }, // Dimens°
+      3: { halign: 'left', cellWidth: 32 },   // Qualité
+      4: { halign: 'center', cellWidth: 23 }, // Couleur
+      5: { halign: 'right', cellWidth: 20 },  // PU HT
+      6: { halign: 'right', fontStyle: 'bold', cellWidth: 22 } // PT HT
     }
   })
 
@@ -154,7 +168,6 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
   doc.setFont('helvetica', 'normal').setFontSize(10)
   let currentY = finalY
 
-  // 🎯 FIX CENTRAL : Si c'est TTC, on extrait le HT global de départ (Prix reçu / 1.20)
   const incomingPrice = data.totalPrice || 0
   let baseTotalHT = data.isTTC ? (incomingPrice / 1.20) : incomingPrice
   let discountAmountHT = 0
@@ -168,13 +181,11 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
 
   let netHT = baseTotalHT - discountAmountHT
   
-  // 1. Affichage du Net HT calculé
   doc.setFont('helvetica', 'bold')
   doc.text("TOTAL NET HT :", totalX, currentY)
   doc.text(`${netHT.toFixed(2)} €`, 190, currentY, { align: 'right' })
   currentY += 6
 
-  // 2. Ventilation de la TVA et reconstruction du TTC propre
   if (data.isTTC) {
     const tvaAmount = netHT * 0.20
     const totalTTC = netHT + tvaAmount

@@ -14,6 +14,8 @@ import {
   User,
   ArrowDown,
   BarChart3,
+  ChevronLeft, 
+  ChevronRight,
   Palette,
   Scissors,
   Gauge,
@@ -27,32 +29,67 @@ const prisma = new PrismaClient()
 export default async function DashboardPage({ 
   searchParams 
 }: { 
-  searchParams: Promise<{ period?: string }> 
+  searchParams: Promise<{ period?: string; offset?: string }> 
 }) {
+  // --- 1. LOGIQUE DES FILTRES DE TEMPS DYNAMIQUES ANNEE N ---
   const resolvedParams = await searchParams
   const period = resolvedParams.period || 'month'
+  const offset = resolvedParams.offset ? parseInt(resolvedParams.offset) : 0
 
-  // --- 1. LOGIQUE DES FILTRES DE TEMPS ---
   const now = new Date()
   let startDate = new Date()
-  let periodLabel = "ce mois-ci"
+  let endDate = new Date()
+  let periodLabel = ""
+
+  const prevOffset = offset + 1
+  const nextOffset = offset - 1
 
   if (period === 'day') {
+    startDate.setDate(now.getDate() - offset)
     startDate.setHours(0, 0, 0, 0)
-    periodLabel = "aujourd'hui"
+    endDate.setDate(now.getDate() - offset)
+    endDate.setHours(23, 59, 59, 999)
+
+    periodLabel = startDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+    if (offset === 0) periodLabel = "Aujourd'hui"
+    if (offset === 1) periodLabel = "Hier"
+
   } else if (period === 'week') {
-    startDate.setDate(now.getDate() - 7)
-    periodLabel = "ces 7 derniers jours"
+    startDate.setDate(now.getDate() - 7 - (offset * 7))
+    startDate.setHours(0, 0, 0, 0)
+    endDate.setDate(now.getDate() - (offset * 7))
+    endDate.setHours(23, 59, 59, 999)
+
+    periodLabel = `Du ${startDate.getDate()}/${startDate.getMonth()+1} au ${endDate.getDate()}/${endDate.getMonth()+1}`
+
   } else if (period === 'year') {
-    startDate = new Date(now.getFullYear(), 0, 1)
-    periodLabel = "cette année"
+    const targetYear = now.getFullYear() - offset
+    startDate = new Date(targetYear, 0, 1)
+    endDate = new Date(targetYear, 11, 31, 23, 59, 59)
+    periodLabel = `Année ${targetYear}`
+
   } else {
-    startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+    const targetMonth = now.getMonth() - offset
+    startDate = new Date(now.getFullYear(), targetMonth, 1)
+    endDate = new Date(now.getFullYear(), targetMonth + 1, 0, 23, 59, 59)
+    periodLabel = startDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
   }
 
-  // --- 2. REQUÊTES BDD ---
+  // 🆕 FENÊTRE DE TEMPS DYNAMIQUE ANNEE N-1 (Exactement -1 an)
+  const startDatePrev = new Date(startDate)
+  startDatePrev.setFullYear(startDate.getFullYear() - 1)
+  
+  const endDatePrev = new Date(endDate)
+  endDatePrev.setFullYear(endDate.getFullYear() - 1)
+
+  const prevPeriodUrl = `/dashboard?period=${period}&offset=${prevOffset}`
+  const nextPeriodUrl = `/dashboard?period=${period}&offset=${nextOffset}`
+  const hasNextPeriod = offset > 0
+
+  // --- 2. REQUÊTES BDD (INCLUANT N-1) ---
   const [
     periodQuotes,
+    periodQuotesPrev, // 🆕 Chiffre d'affaires historique de l'année passée
     allClients,
     allQuoteItems,
     fabrics,
@@ -62,11 +99,15 @@ export default async function DashboardPage({
     returnedQuotesRaw
   ] = await Promise.all([
     prisma.quote.findMany({
-      where: { status: 'VALIDATED', createdAt: { gte: startDate } },
+      where: { status: 'VALIDATED', validatedAt: { gte: startDate, lte: endDate } }, 
+    }),
+    prisma.quote.findMany({
+      // 🆕 Extraction N-1
+      where: { status: 'VALIDATED', validatedAt: { gte: startDatePrev, lte: endDatePrev } }, 
     }),
     prisma.client.findMany(),
     prisma.quoteItem.findMany({
-      where: { quote: { status: 'VALIDATED', createdAt: { gte: startDate } } },
+      where: { quote: { status: 'VALIDATED', validatedAt: { gte: startDate } } },
       include: { fabric: true, quote: true }
     }),
     prisma.fabric.findMany({ where: { isArchived: false } }),
@@ -97,7 +138,6 @@ export default async function DashboardPage({
     }
   })
 
-  // 🏆 Extraction des Best-Sellers
   const topColors = Array.from(colorSalesMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3)
   const topProducts = Array.from(productSalesMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3)
 
@@ -110,14 +150,12 @@ export default async function DashboardPage({
   })
   const topFabrics = Array.from(fabricSales.values()).sort((a, b) => b.meters - a.meters).slice(0, 3)
 
-  // 📉 Extraction des Worst-Sellers (Tissus en stock mais 0 vente sur la période)
   const soldFabricIds = new Set(allQuoteItems.map(i => i.fabricId))
   const worstFabrics = fabrics
       .filter(f => !soldFabricIds.has(f.id) && (f.stockMeters || 0) > 0)
       .sort((a, b) => (b.stockMeters || 0) - (a.stockMeters || 0))
       .slice(0, 3)
 
-  // 📉 Extraction des Worst-Sellers par coloris (Ceux qui n'ont rien vendu)
   const worstColors = fabrics
       .filter(f => f.color && !colorSalesMap.has(f.color.trim().toUpperCase()) && (f.stockMeters || 0) > 0)
       .map(f => ({ color: f.color.trim().toUpperCase(), stock: f.stockMeters || 0 }))
@@ -153,20 +191,69 @@ export default async function DashboardPage({
   const b2bPercent = allClients.length > 0 ? Math.round((b2bClients.length / allClients.length) * 100) : 0
   const b2cPercent = allClients.length > 0 ? 100 - b2bPercent : 0
 
-  const chartDataMap = new Map<string, number>()
+  // --- 🆕 CONSTRUCTION DOUBLE DU COMPOSANT CHART (N vs N-1) ---
+  const chartDataMap = new Map<string, { current: number, previous: number }>()
+
   if (period === 'year') {
     const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
-    months.forEach(m => chartDataMap.set(m, 0))
-    periodQuotes.forEach(q => { chartDataMap.set(months[q.createdAt.getMonth()], chartDataMap.get(months[q.createdAt.getMonth()])! + Number(q.totalPrice)) })
+    months.forEach(m => chartDataMap.set(m, { current: 0, previous: 0 }))
+    
+    periodQuotes.forEach(q => {
+      const d = q.validatedAt || q.createdAt
+      const data = chartDataMap.get(months[d.getMonth()])!
+      data.current += Number(q.totalPrice)
+    })
+    periodQuotesPrev.forEach(q => {
+      const d = q.validatedAt || q.createdAt
+      const data = chartDataMap.get(months[d.getMonth()])!
+      data.previous += Number(q.totalPrice)
+    })
+
+  } else if (period === 'week') {
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(startDate)
+      d.setDate(startDate.getDate() + i)
+      const label = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })
+      chartDataMap.set(label, { current: 0, previous: 0 })
+    }
+    periodQuotes.forEach(q => {
+      const d = q.validatedAt || q.createdAt
+      const label = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })
+      if (chartDataMap.has(label)) chartDataMap.get(label)!.current += Number(q.totalPrice)
+    })
+    periodQuotesPrev.forEach(q => {
+      const d = q.validatedAt || q.createdAt
+      // On aligne les jours de la semaine N-1 sur les libellés N
+      const dayOffset = (d.getDay() - startDatePrev.getDay() + 7) % 7
+      const targetLabel = Array.from(chartDataMap.keys())[dayOffset]
+      if (targetLabel) chartDataMap.get(targetLabel)!.previous += Number(q.totalPrice)
+    })
+
   } else if (period === 'month') {
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-    for (let i = 1; i <= daysInMonth; i++) chartDataMap.set(`${i}`, 0)
-    periodQuotes.forEach(q => { const day = `${q.createdAt.getDate()}`; if (chartDataMap.has(day)) chartDataMap.set(day, chartDataMap.get(day)! + Number(q.totalPrice)) })
+    const daysInMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate()
+    for (let i = 1; i <= daysInMonth; i++) chartDataMap.set(`${i}`, { current: 0, previous: 0 })
+    
+    periodQuotes.forEach(q => {
+      const d = q.validatedAt || q.createdAt
+      const day = `${d.getDate()}`
+      if (chartDataMap.has(day)) chartDataMap.get(day)!.current += Number(q.totalPrice)
+    })
+    periodQuotesPrev.forEach(q => {
+      const d = q.validatedAt || q.createdAt
+      const day = `${d.getDate()}`
+      if (chartDataMap.has(day)) chartDataMap.get(day)!.previous += Number(q.totalPrice)
+    })
   } else {
-    chartDataMap.set(periodLabel, totalRevenue)
+    // Mode Jour unique
+    chartDataMap.set(periodLabel, { current: totalRevenue, previous: periodQuotesPrev.reduce((sum, q) => sum + Number(q.totalPrice), 0) })
   }
-  const chartData = Array.from(chartDataMap.entries()).map(([label, total]) => ({ label, total }))
-  const stockValue = fabrics.reduce((sum, f) => sum + ((f.stockMeters || 0) * Number(f.pricePerMeter)), 0)
+
+  // Transformation finale pour Recharts : [{ label: 'Jan', current: 1200, previous: 950 }, ...]
+  const chartData = Array.from(chartDataMap.entries()).map(([label, values]) => ({ 
+    label, 
+    current: values.current, 
+    previous: values.previous 
+  }))
 
   const FilterButton = ({ value, label }: { value: string, label: string }) => (
     <Link href={`/dashboard?period=${value}`}>
@@ -178,12 +265,11 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-12 p-6">
-      
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
           <h1 className="text-3xl font-serif font-bold text-slate-900">Business Intelligence</h1>
-          <p className="text-slate-500">Analyses de l'atelier, des ventes tissus par coloris et motifs de retour SAV.</p>
+          <p className="text-slate-500">Analyses comparatives N vs N-1, ventes de l'atelier et gestion des dormants.</p>
         </div>
         <div className="flex gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-200">
           <FilterButton value="day" label="Aujourd'hui" />
@@ -193,15 +279,44 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* GRILLE DU CHIFFRE D'AFFAIRES */}
+      {/* GRILLE DU CHIFFRE D'AFFAIRES COMPARATIF */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
           <div className="flex justify-between items-center mb-2">
             <h2 className="text-lg font-serif font-bold text-slate-800 flex items-center gap-2">
-              <BarChart3 className="text-indigo-500" size={20} /> Évolution du Chiffre d'Affaires
+              <BarChart3 className="text-indigo-500" size={20} /> Analyse Comparative de Croissance
             </h2>
-            <span className="text-xs font-bold text-slate-400 bg-slate-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">{periodLabel}</span>
+            
+            <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200/60">
+              <Link href={prevPeriodUrl} className="p-1 hover:bg-white rounded-lg text-slate-400 hover:text-slate-700 transition-all flex items-center justify-center">
+                <ChevronLeft size={16} strokeWidth={2.5} />
+              </Link>
+              <span className="text-xs font-black text-slate-600 px-2 uppercase tracking-wider min-w-[120px] text-center">
+                {periodLabel}
+              </span>
+              {hasNextPeriod ? (
+                <Link href={nextPeriodUrl} className="p-1 hover:bg-white rounded-lg text-slate-400 hover:text-slate-700 transition-all flex items-center justify-center">
+                  <ChevronRight size={16} strokeWidth={2.5} />
+                </Link>
+              ) : (
+                <span className="p-1 text-slate-200 cursor-not-allowed flex items-center justify-center">
+                  <ChevronRight size={16} strokeWidth={2.5} />
+                </span>
+              )}
+            </div>
           </div>
+          
+          {/* Légende rapide N vs N-1 */}
+          <div className="flex gap-4 text-[10px] font-black uppercase tracking-wider mb-4 pl-1">
+            <div className="flex items-center gap-1.5 text-indigo-600">
+              <span className="w-3 h-3 rounded bg-indigo-600 block"></span> Période Cible (N)
+            </div>
+            <div className="flex items-center gap-1.5 text-slate-300">
+              <span className="w-3 h-3 rounded bg-slate-300 block"></span> Année Précédente (N-1)
+            </div>
+          </div>
+          
+          {/* 🎯 On envoie le tableau d'objets contenant 'current' et 'previous' */}
           <RevenueChart data={chartData} />
         </div>
 
@@ -227,7 +342,7 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* CONTROL DES CHRONOMETRES */}
+      {/* Reste du Dashboard identique (Chronomètres, Best-Sellers, Dormants, SAV) */}
       <div className="bg-slate-900 text-white p-6 rounded-[2rem] shadow-xl space-y-4">
         <div className="flex justify-between items-center border-b border-slate-800 pb-3">
           <h2 className="text-xl font-serif font-bold text-white flex items-center gap-2">
@@ -264,9 +379,6 @@ export default async function DashboardPage({
         )}
       </div>
 
-      {/* ======================================================== */}
-      {/* 🏆 SECTION 1 : LES SUCCÈS (BEST-SELLERS)                 */}
-      {/* ======================================================== */}
       <div className="space-y-3">
         <h2 className="text-xl font-serif font-bold text-slate-800 flex items-center gap-2">
           <TrendingUp className="text-emerald-500" size={22} /> Palmarès des Succès (Best-Sellers {periodLabel})
@@ -283,7 +395,6 @@ export default async function DashboardPage({
               ))}
             </div>
           </div>
-
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-3">
             <h3 className="font-bold text-slate-400 text-[10px] uppercase tracking-wider flex items-center gap-1"><Palette size={12} className="text-indigo-500"/> Top Coloris Demandé</h3>
             <div className="space-y-2 pt-1">
@@ -295,7 +406,6 @@ export default async function DashboardPage({
               ))}
             </div>
           </div>
-
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-3">
             <h3 className="font-bold text-slate-400 text-[10px] uppercase tracking-wider flex items-center gap-1"><Package size={12} className="text-amber-500"/> Top Confections</h3>
             <div className="space-y-2 pt-1">
@@ -310,16 +420,11 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* ======================================================== */}
-      {/* 📉 🆕 SECTION 2 : LES STAGNANTS (WORST-SELLERS)         */}
-      {/* ======================================================== */}
       <div className="space-y-3 pt-2">
         <h2 className="text-xl font-serif font-bold text-slate-800 flex items-center gap-2">
           <TrendingDown className="text-rose-500" size={22} /> Le Coin des Dormants (Worst-Sellers)
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          
-          {/* WORST TISSUS */}
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-3">
             <h3 className="font-bold text-slate-400 text-[10px] uppercase tracking-wider flex items-center gap-1"><Scissors size={12} className="text-rose-500"/> Tissus Immo. (0 vente)</h3>
             <div className="space-y-2 pt-1">
@@ -331,8 +436,6 @@ export default async function DashboardPage({
               ))}
             </div>
           </div>
-
-          {/* WORST COLORIS */}
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-3">
             <h3 className="font-bold text-slate-400 text-[10px] uppercase tracking-wider flex items-center gap-1"><Palette size={12} className="text-rose-500"/> Coloris Bloqués (0 vente)</h3>
             <div className="space-y-2 pt-1">
@@ -344,8 +447,6 @@ export default async function DashboardPage({
               ))}
             </div>
           </div>
-
-          {/* DORMANTS BOUTIQUE */}
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm space-y-3">
             <h3 className="font-bold text-slate-400 text-[10px] uppercase tracking-wider flex items-center gap-1"><Package size={12} className="text-rose-500"/> Étagères Boutique Pleines</h3>
             <div className="space-y-2 pt-1">
@@ -357,11 +458,9 @@ export default async function DashboardPage({
               ))}
             </div>
           </div>
-
         </div>
       </div>
 
-      {/* FIN : RETOURS SAV & EXPORTS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
         <div className="bg-rose-50/60 p-5 rounded-3xl border border-rose-100 shadow-sm space-y-3 lg:col-span-1">
           <h3 className="font-serif font-bold text-rose-900 text-sm flex items-center gap-1.5"><AlertOctagon size={16} className="text-rose-600" /> Raisons des Retours SAV</h3>
@@ -378,7 +477,6 @@ export default async function DashboardPage({
             )}
           </div>
         </div>
-
         <div className="lg:col-span-2 bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
           <h3 className="font-serif font-bold text-slate-800 text-sm flex items-center gap-1.5"><Download size={16} className="text-indigo-500"/> Téléchargement des rapports financiers</h3>
           <div className="grid grid-cols-3 gap-3 mt-4">
@@ -388,7 +486,6 @@ export default async function DashboardPage({
           </div>
         </div>
       </div>
-
     </div>
   )
 }

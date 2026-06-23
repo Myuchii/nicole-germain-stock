@@ -75,7 +75,7 @@ export async function syncPrestashopOrders() {
     }
 
     const cleanUrl = psUrl.replace(/\/$/, '')
-    const apiUrl = `${cleanUrl}/api/orders?ws_key=${psKey}&display=full&output_format=JSON&sort=[id_DESC]&limit=200`
+    const apiUrl = `${cleanUrl}/api/orders?ws_key=${psKey}&display=full&output_format=JSON&sort=[id_DESC]&limit=12752`
 
     const response = await fetch(apiUrl, {
       headers: {
@@ -106,7 +106,7 @@ export async function syncPrestashopOrders() {
 
     for (const order of psOrders) {
       try {
-        const orderRef = `WEB-#${order.id}`
+        const orderRef = `VOS-#${order.id}`
 
         const existingQuote = await prisma.quote.findFirst({
           where: { reference: orderRef }
@@ -349,6 +349,7 @@ export async function syncPrestashopOrders() {
             fullCustomName += ` (Spécificités : ${extraSpecs.join(' | ')})`
           }
 
+// ... (juste au dessus de la boucle des items)
           const safeUnitPrice = parseFloat(row.unit_price_tax_incl) 
             || parseFloat(row.unit_price_tax_excl) * 1.2 
             || parseFloat(row.product_price) * 1.2 
@@ -365,7 +366,9 @@ export async function syncPrestashopOrders() {
                 sellingPrice: safeUnitPrice, 
                 prodTimeMinutes: 30,
                 costPerMinute: 0, 
-                statusProduction: 'A_COUPER'
+                statusProduction: 'A_COUPER',
+                // 🎯 LE FIX ICI : On force la fiche atelier à prendre la vraie date de la commande !
+                createdAt: new Date(orderDateStr) 
               }
             })
           }

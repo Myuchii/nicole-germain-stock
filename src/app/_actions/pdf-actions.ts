@@ -7,6 +7,7 @@ interface Product {
   fabric: {
     reference: string
     name: string
+    color?: string // 🆕 Ajout optionnel de la couleur brute si dispo
     pricePerMeter: number
   }
   dims: {
@@ -15,6 +16,7 @@ interface Product {
     bonnet?: number
     diametre?: number
   }
+  quantityUnits?: number // 🆕 On récupère la quantité saisie (Qt)
   mainFabricMeters: number
   laborMinutes: number
   totalPriceHT: number
@@ -37,35 +39,29 @@ interface QuotePDFData {
 }
 
 export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null> {
-  // 🛡️ SÉCURITÉ NEXT.JS : Si on est côté serveur pendant le pré-rendu, on n'exécute rien
   if (typeof window === 'undefined') {
     return null
   }
 
   const doc = new jsPDF('p', 'mm', 'a4')
 
-  // --- 0. AJOUT DU LOGO ---
+  // --- 0. LOGIQUE DE CHARGEMENT DU LOGO ---
   try {
-    // Récupération de l'image depuis le dossier public
     const response = await fetch('/logo.png') 
     const blob = await response.blob()
     
-    // Conversion en Base64 requise par jsPDF
     const base64Logo = await new Promise<string>((resolve) => {
       const reader = new FileReader()
       reader.onloadend = () => resolve(reader.result as string)
       reader.readAsDataURL(blob)
     })
     
-    // Ajout au PDF : (données, format, X, Y, Largeur, Hauteur)
-    // Ajustez la largeur (40) et la hauteur (15) selon les proportions de votre logo
     doc.addImage(base64Logo, 'PNG', 20, 10, 40, 15)
   } catch (error) {
     console.warn("Impossible de charger le logo, génération du PDF sans logo.", error)
   }
 
   // --- 1. EN-TÊTE DE L'ATELIER ---
-  // J'ai descendu les positions Y (ex: de 25 à 35) pour laisser la place au logo au-dessus
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(16)
   doc.text('ATELIER NICOLE GERMAIN', 20, 35)
@@ -74,12 +70,12 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
   doc.text('Confection de Linge de Lit sur Mesure', 20, 41)
   doc.text('Email : contact@nicolegermain.com', 20, 46)
 
-  // --- 2. BLOC CLIENT COORDONNÉES ---
+  // --- 2. BLOC COORDONNÉES CLIENT ---
   const rightColumnX = 120
   
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10)
-  doc.text('DESTINATAIRE :', rightColumnX, 35) // Aligné avec le nom de l'atelier
+  doc.text('DESTINATAIRE :', rightColumnX, 35)
   
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
@@ -108,10 +104,9 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
   }
 
   // --- 3. INFOS DOCUMENT ---
-  // Descendu également pour s'adapter au nouvel espacement
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
-  doc.text(`DEVIS TECHNIQUE SUR MESURE`, 20, 70)
+  doc.text(`DEVIS COMMERCIAL SUR MESURE`, 20, 70)
   
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
@@ -122,49 +117,66 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
   doc.setDrawColor(99, 102, 241)
   doc.line(20, 87, 190, 87)
 
-  // --- 4. TABLEAU DES PRODUITS ---
-  const tableData = data.products.map((product, index) => {
+  // --- 4. TABLEAU DES PRODUITS (STRUCTURE EXACTE DU CROQUIS) ---
+  const tableData = data.products.map((product) => {
     let labelFamily = product.family
     if (product.family === 'FITTED') labelFamily = 'Drap Housse'
-    if (product.family === 'ENVELOPE') labelFamily = 'Housse Couette / Taie'
+    if (product.family === 'ENVELOPE') labelFamily = 'Housse Couette'
     if (product.family === 'FLAT') labelFamily = 'Drap Plat'
     if (product.family === 'BOLSTER') labelFamily = 'Traversin'
     if (product.family === 'ROUND') labelFamily = 'Ouvrage Rond'
+    if (product.family === 'CUSTOM') labelFamily = 'Sur-mesure'
 
+    // Formattage des dimensions stricts
     const dimensionsStr = product.family === 'ROUND' 
       ? `Diam. ${product.dims.diametre || 210}cm`
-      : `${product.dims.L}×${product.dims.l}${product.dims.bonnet ? ` (Bonnet ${product.dims.bonnet}cm)` : ''}`
+      : `${product.dims.L}×${product.dims.l}${product.dims.bonnet ? ` (B.${product.dims.bonnet}cm)` : ''}`
+
+    // Séparation Qualité (Matière) et Couleur
+    // Si le nom du tissu contient déjà la couleur (ex: "Percale - Blanc"), on nettoie un peu au besoin
+    const qualiteStr = `${product.range}\n(${product.fabric.name.split('-')[0].trim()})`
+    
+    const colorStr = product.fabric.color 
+      ? product.fabric.color.toUpperCase() 
+      : (product.fabric.name.split('-')[1]?.trim().toUpperCase() || 'STANDARD')
+
+    const qte = product.quantityUnits || 1
+    const puHT = product.totalPriceHT / qte // Déduction mathématique du prix unitaire
 
     return [
-      `${index + 1}`,
-      `${labelFamily}\nGamme: ${product.range}`,
-      `${product.fabric.reference}\n${product.fabric.name}`,
-      dimensionsStr,
-      `${product.mainFabricMeters.toFixed(1)} m`,
-      `${product.laborMinutes} min`,
-      `${product.totalPriceHT.toFixed(2)} €`
+      labelFamily,                           // 1. Ouvrage
+      `${qte}`,                              // 2. Qt
+      dimensionsStr,                         // 3. Dimens°
+      qualiteStr,                            // 4. Qualité
+      colorStr,                              // 5. Couleur
+      `${puHT.toFixed(2)} €`,                // 6. PU HT
+      `${product.totalPriceHT.toFixed(2)} €` // 7. PT HT
     ]
   })
 
   autoTable(doc, {
-    startY: 94, // Descendu pour correspondre à la ligne de séparation
-    head: [['#', 'OUVRAGE', 'MATIÈRE', 'DIMENSIONS', 'MÉTRAGE', 'COUTURE', 'MONTANT']],
+    startY: 94,
+    // 🎯 En-têtes calqués sur les intitulés de ton croquis papier
+    head: [['OUVRAGE', 'QT', 'DIMENS°', 'QUALITÉ', 'COULEUR', 'PU HT', 'PT HT']],
     body: tableData,
     theme: 'striped',
-    headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', fontSize: 9 },
-    bodyStyles: { fontSize: 9, valign: 'middle' },
+    headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
+    bodyStyles: { fontSize: 8.5, valign: 'middle' },
     columnStyles: { 
-      0: { halign: 'center', cellWidth: 8 }, 
-      4: { halign: 'right' }, 
-      5: { halign: 'center' }, 
-      6: { halign: 'right', fontStyle: 'bold' } 
+      0: { halign: 'left', cellWidth: 32 },   // Ouvrage
+      1: { halign: 'center', cellWidth: 12 }, // Qt
+      2: { halign: 'center', cellWidth: 30 }, // Dimens°
+      3: { halign: 'left', cellWidth: 32 },   // Qualité
+      4: { halign: 'center', cellWidth: 24 }, // Couleur
+      5: { halign: 'right', cellWidth: 22 },  // PU HT
+      6: { halign: 'right', fontStyle: 'bold', cellWidth: 24 } // PT HT
     }
   })
 
   // --- 5. ZONE DE TOTALISATION DYNAMIQUE ---
   // @ts-ignore
   const finalY = doc.lastAutoTable.finalY + 10
-  const totalX = 140
+  const totalX = 130
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
@@ -177,7 +189,7 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
   }
 
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(12)
+  doc.setFontSize(11)
   const labelTotal = data.isTTC ? "TOTAL FACTURÉ TTC :" : "TOTAL NET HT :"
   doc.text(labelTotal, totalX, currentY)
   doc.text(`${data.totalPrice.toFixed(2)} €`, 190, currentY, { align: 'right' })
@@ -187,9 +199,7 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
   doc.setFontSize(9)
   doc.setFont('helvetica', 'italic')
   doc.text('Validité de la proposition : 30 jours à compter de la date d\'émission', 105, pageHeight - 20, { align: 'center' })
-  doc.setFontSize(9)
-  doc.setFont('helvetica', 'italic')
-  doc.text('Les articles à dimensions spéciales ne sont ni repris, ni echangés', 105, pageHeight - 15, { align: 'center' })
+  doc.text('Les articles à dimensions spéciales ne sont ni repris, ni échangés', 105, pageHeight - 15, { align: 'center' })
   doc.setFontSize(8)
   doc.setFont('helvetica', 'normal')
   doc.text('Atelier Nicole Germain — Confectionné main en France', 105, pageHeight - 10, { align: 'center' })

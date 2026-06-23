@@ -210,7 +210,7 @@ export default function StockPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Rechercher un tissu, une couleur ou un accessoire..." 
-            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm font-medium text-sm" 
+            className="w-full pl-12 pr-4 py-3 bg-white text-slate-900 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm font-medium text-sm" 
           />
         </div>
       </div>

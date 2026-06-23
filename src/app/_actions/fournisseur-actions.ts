@@ -88,3 +88,29 @@ export async function generateProcurementDocument(selectedItems: SelectedItemInp
     throw new Error("Impossible de générer le document de réassort")
   }
 }
+
+/**
+ * 🎨 Met à jour les informations (tarifs, couleurs) d'une ligne du catalogue grossiste
+ */
+export async function updateSupplierCatalogItem(
+  id: string, 
+  data: { purchasePriceHT?: number; color?: string; ngColor?: string }
+) {
+  try {
+    await prisma.supplierCatalogItem.update({
+      where: { id },
+      data: {
+        purchasePriceHT: data.purchasePriceHT,
+        color: data.color,
+        ngColor: data.ngColor
+      }
+    })
+    
+    // On demande à Next.js de rafraîchir le cache pour la page d'approvisionnement
+    revalidatePath('/suppliers')
+    return { success: true }
+  } catch (error) {
+    console.error("Erreur lors de la mise à jour de l'article:", error)
+    return { success: false, error }
+  }
+}

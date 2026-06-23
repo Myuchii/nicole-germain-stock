@@ -1,7 +1,86 @@
+// À remplacer au début de ton fichier src/app/_actions/settings-actions.ts
 'use server'
 
-import { prisma } from "@/lib/prisma"
+import { PrismaClient, UserRole, AppFeature } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
+
+const prisma = new PrismaClient()
+
+// 🔍 1. Récupérer toutes les permissions actuelles (formatées pour l'interface client)
+export async function getRolePermissions() {
+  try {
+    const permissions = await prisma.rolePermission.findMany({
+      where: { canAccess: true }
+    })
+    
+    const matrix: Record<string, string[]> = {
+      CONFECTION: [],
+      BOUTIQUE: []
+    }
+
+    // On transforme le modèle de la BDD en tableau de chemins/features 
+    // pour que tes composants 'checked={...includes(route.path)}' restent compatibles !
+    permissions.forEach(p => {
+      // Correspondance simple entre l'enum et l'URL de ton interface
+      const pathMap: Record<AppFeature, string> = {
+        DASHBOARD: '/dashboard',
+        STOCK_BOUTIQUE: '/stock-boutique',
+        STOCK_ATELIER: '/stock-atelier',
+        PRODUCTION: '/atelier',             // 🆕 Lié à l'Atelier de Jade !
+        COMMANDES: '/commandes',
+        FOURNISSEURS: '/approvisionnement',
+        QUOTES: '/quotes',                  // 🆕 Lié au calculateur de Devis !
+        CLIENTS: '/clients',
+        SETTINGS: '/settings'
+      }
+      if (matrix[p.role] && pathMap[p.feature]) {
+        matrix[p.role].push(pathMap[p.feature])
+      }
+    })
+
+    return matrix
+  } catch (error) {
+    console.error("Erreur getRolePermissions:", error)
+    return { CONFECTION: [], BOUTIQUE: [] }
+  }
+}
+
+// 💾 2. Sauvegarder ou inverser le droit d'accès
+export async function updateRolePermissions(role: UserRole, routes: string[]) {
+  try {
+    // Liste des correspondances inverses (de l'URL vers l'Enum de ton schéma)
+    const urlToFeatureMap: Record<string, AppFeature> = {
+      '/dashboard': AppFeature.DASHBOARD,
+      '/stock-boutique': AppFeature.STOCK_BOUTIQUE,
+      '/stock-atelier': AppFeature.STOCK_ATELIER,
+      '/commandes': AppFeature.COMMANDES,
+      '/approvisionnement': AppFeature.FOURNISSEURS,
+      '/clients': AppFeature.CLIENTS,
+      '/settings': AppFeature.SETTINGS
+    }
+
+    // Pour chaque fonctionnalité disponible dans le système
+    const promises = Object.entries(urlToFeatureMap).map(([path, feature]) => {
+      const hasAccess = routes.includes(path)
+
+      return prisma.rolePermission.upsert({
+        where: {
+          role_feature: { role, feature } // 🎯 Utilise ton index @@unique composite
+        },
+        update: { canAccess: hasAccess },
+        create: { role, feature, canAccess: hasAccess }
+      })
+    })
+
+    await prisma.$transaction(promises)
+    
+    revalidatePath('/parametres')
+    return { success: true }
+  } catch (error: any) {
+    console.error("Erreur updateRolePermissions:", error)
+    return { success: false, error: error.message }
+  }
+}
 
 // --- 1. GESTION FINANCIÈRE GLOBALE ---
 

@@ -2,7 +2,8 @@ export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma'
 import { Scissors, Shirt, Package, Layers, AlertTriangle, Palette } from 'lucide-react'
 import ProductionCard from '@/components/ProductionCard'
-import { validateCuttingStep } from '@/app/_actions/atelier-actions'
+import { validateCuttingStep, validateBulkCuttingStep } from '@/app/_actions/atelier-actions'
+import { getAtelierSettings } from '@/app/_actions/settings-actions' // 🆕 Récupération des constantes d'atelier
 import SyncWebButton from '@/components/SyncWebButton'
 
 // 🛠️ Le Traducteur Local : Évite les collisions de fiches quand deux articles partagent le même tissu
@@ -37,12 +38,23 @@ function parsePrestashopProductLocal(productName: string) {
 }
 
 export default async function AtelierPage() {
+  // 🆕 1. Récupération des réglages globaux (pour injecter auditQuota)
+  const settings = await getAtelierSettings()
+
+  // 🆕 2. On compte le nombre de pièces déjà chronométrées (avec finishedAt) pour l'atelier
+  const totalTimedItemsCount = await prisma.quoteItem.count({
+    where: { finishedAt: { not: null }, startedCoutureAt: { not: null } }
+  })
+
   const items = await prisma.quoteItem.findMany({
     where: {
       quote: { status: 'VALIDATED' }, 
       statusProduction: { in: ['A_COUPER', 'EN_COUTURE', 'PRET'] } 
     },
-    include: { fabric: true, quote: true }
+    include: { fabric: true, quote: true },
+    orderBy: {
+      createdAt: 'asc' 
+    }
   })
 
   const boutiqueStock = await prisma.finishedProduct.findMany({
@@ -53,7 +65,6 @@ export default async function AtelierPage() {
   const familyLabels: Record<string, string> = { FITTED: 'Drap housse', FLAT: 'Drap plat', ENVELOPE: 'Housse de couette', ROUND: 'Drap rond', BOLSTER: 'Traversin', CUSTOM: 'Sur-mesure' }
 
   items.filter(i => i.statusProduction === 'A_COUPER').forEach(item => {
-    // 🎯 Sécurité anti-collision ré-injectée
     const nameToParse = item.customName || item.fabric?.name || ''
     const matchedProduct = parsePrestashopProductLocal(nameToParse)
 
@@ -84,9 +95,25 @@ export default async function AtelierPage() {
     groupedCutting[uniqueGroupKey].itemsList.push(item)
   })
 
-  const cuttingGroups = Object.values(groupedCutting)
-  const enCouture = items.filter(i => i.statusProduction === 'EN_COUTURE')
-  const pret = items.filter(i => i.statusProduction === 'PRET')
+  const cuttingGroups = Object.values(groupedCutting).sort((groupA: any, groupB: any) => {
+    const dateA = new Date(groupA.itemsList[0].createdAt).getTime()
+    const dateB = new Date(groupB.itemsList[0].createdAt).getTime()
+    return dateA - dateB 
+  })
+
+  cuttingGroups.forEach((group: any) => {
+    group.itemsList.sort((itemA: any, itemB: any) => {
+      return new Date(itemA.createdAt).getTime() - new Date(itemB.createdAt).getTime()
+    })
+  })
+
+  const enCouture = items
+    .filter(i => i.statusProduction === 'EN_COUTURE')
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+
+  const pret = items
+    .filter(i => i.statusProduction === 'PRET')
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
 
   return (
     <div className="space-y-8 p-6 max-w-7xl mx-auto">
@@ -136,11 +163,41 @@ export default async function AtelierPage() {
                     </div>
                   </div>
 
+                  {/* Nettoyage du doublon group.boutiqueAlert effectué ici */}
                   {group.boutiqueAlert && (
                     <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl flex items-start gap-1.5 text-[11px] font-medium shadow-inner">
                       <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
                       <p>Existe en Boutique ! Reste <strong>{group.boutiqueAlert.qty} u.</strong> de "{group.boutiqueAlert.name}".</p>
                     </div>
+                  )}
+
+                  {isMultiCut && (
+  <form 
+    onSubmit={async (e) => {
+      e.preventDefault(); // 🛑 Empêche le rechargement brutal de la page
+      const formData = new FormData(e.currentTarget);
+      
+      // On exécute l'action manuellement
+      const result = await validateBulkCuttingStep(formData);
+      
+      // Optionnel : Tu peux utiliser `result.success` ou `result.error` ici 
+      // pour afficher une notification ou un toast si tu veux !
+      if (result.success) {
+        // Optionnel : par exemple rafraîchir les stats des chronos
+      }
+    }} 
+    className="pt-1"
+  >
+                      {group.itemsList.map((item: any) => (
+                        <input key={item.id} type="hidden" name="itemIds" value={item.id} />
+                      ))}
+                      <button 
+                        type="submit"
+                        className="w-full py-2 bg-indigo-600 hover:bg-slate-900 text-white font-black rounded-xl text-[10px] uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-1"
+                      >
+                        Couper le lot ({group.itemsList.length} pièces)
+                      </button>
+                    </form>
                   )}
 
                   <div className="space-y-2 border-t border-slate-100 pt-3">
@@ -173,24 +230,9 @@ export default async function AtelierPage() {
                             <span className="text-slate-400 font-bold">m</span>
                           </div>
 
-                          {/* 🎯 FIX NATIVE ACTION BUTTONS : Deux boutons submit, deux valeurs distinctes reçues par le serveur */}
                           <div className="flex gap-1.5">
-                            <button 
-                              type="submit" 
-                              name="isChute" 
-                              value="false" 
-                              className="py-1 px-2 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap"
-                            >
-                              ✂️ Rouleau
-                            </button>
-                            <button 
-                              type="submit" 
-                              name="isChute" 
-                              value="true" 
-                              className="py-1 px-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap"
-                            >
-                              ♻️ Chute
-                            </button>
+                            <button type="submit" name="isChute" value="false" className="py-1 px-2 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">✂️ Rouleau</button>
+                            <button type="submit" name="isChute" value="true" className="py-1 px-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">♻️ Chute</button>
                           </div>
                         </div>
                       </form>
@@ -210,7 +252,14 @@ export default async function AtelierPage() {
           {enCouture.length === 0 ? (
             <p className="text-xs text-slate-400 font-medium text-center py-6">Aucun ouvrage à la machine.</p>
           ) : (
-            enCouture.map(item => <ProductionCard key={item.id} item={item} currentTimedCount={0} />)
+            enCouture.map(item => (
+              <ProductionCard 
+                key={item.id} 
+                item={item} 
+                currentTimedCount={totalTimedItemsCount} // 🔍 🆕 Câblé dynamiquement !
+                auditQuota={settings?.auditQuota ?? 10}   // 🔍 🆕 Injecté depuis la BDD !
+              />
+            ))
           )}
         </div>
 
@@ -222,7 +271,7 @@ export default async function AtelierPage() {
           {pret.length === 0 ? (
             <p className="text-xs text-slate-400 font-medium text-center py-6">Rien en zone d'expédition.</p>
           ) : (
-            pret.map(item => <ProductionCard key={item.id} item={item} currentTimedCount={0} />)
+            pret.map(item => <ProductionCard key={item.id} item={item} currentTimedCount={0} auditQuota={0} />)
           )}
         </div>
 

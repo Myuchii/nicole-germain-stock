@@ -32,22 +32,22 @@ export default function AddClientPage() {
         {/* IDENTITÉ */}
         <div className="space-y-2">
           <label className="text-sm font-bold text-slate-700">Nom complet / Contact principal *</label>
-          <input name="name" placeholder="ex: Jean Dupont" className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" required />
+          <input name="name" placeholder="ex: Jean Dupont" className="w-full text-slate-500 p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" required />
         </div>
 
         <div className="space-y-2">
           <label className="text-sm font-bold text-slate-700">Nom de l'entreprise (Optionnel - B2B)</label>
-          <input name="company" placeholder="ex: Hôtel Le Monaco" className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
+          <input name="company" placeholder="ex: Hôtel Le Monaco" className="w-full text-slate-500 p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
         </div>
 
         <div className="grid grid-cols-2 gap-6">
           <div className="space-y-2">
             <label className="text-sm font-bold text-slate-700">Adresse Email</label>
-            <input name="email" type="email" placeholder="ex: contact@hotelmonaco.com" className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
+            <input name="email" type="email" placeholder="ex: contact@hotelmonaco.com" className="w-full text-slate-500 p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <div className="space-y-2">
             <label className="text-sm font-bold text-slate-700">Téléphone</label>
-            <input name="phone" placeholder="ex: 06 12 34 56 78" className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
+            <input name="phone" placeholder="ex: 06 12 34 56 78" className="w-full text-slate-500 p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
           </div>
         </div>
 
@@ -57,23 +57,23 @@ export default function AddClientPage() {
           
           <div className="space-y-2">
             <label className="text-sm font-bold text-slate-700">Rue et numéro</label>
-            <input name="address" placeholder="ex: 14 Rue de la Paix" className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
+            <input name="address" placeholder="ex: 14 Rue de la Paix" className="w-full text-slate-500 p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
           </div>
 
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="text-sm font-bold text-slate-700">Code Postal</label>
-              <input name="zipCode" placeholder="ex: 75002" className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
+              <input name="zipCode" placeholder="ex: 75002" className="w-full text-slate-500 p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-slate-700">Ville</label>
-              <input name="city" placeholder="ex: Paris" className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
+              <input name="city" placeholder="ex: Paris" className="w-full text-slate-500 p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
             </div>
           </div>
 
           <div className="space-y-2">
             <label className="text-sm font-bold text-slate-700">Pays</label>
-            <input name="country" defaultValue="France" placeholder="ex: France" className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
+            <input name="country" defaultValue="France" placeholder="ex: France" className="w-full text-slate-500 p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
           </div>
         </div>
 
