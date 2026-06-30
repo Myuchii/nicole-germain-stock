@@ -1,14 +1,16 @@
+export const dynamic = 'force-dynamic'
+
 import { prisma } from '@/lib/prisma' 
 import { QuoteStatus } from '@prisma/client'
 import Link from 'next/link'
 import { CheckCircle, Archive, Search } from 'lucide-react'
 import { OrderCard } from '@/components/OrderCard'
 import SyncWebButton from '@/components/SyncWebButton'
-
-export const dynamic = 'force-dynamic'
+import ImportOrderModalWrapper from '@/components/ImportOrderModalWrapper'
 
 async function getOrders() {
   return await prisma.quote.findMany({
+
     where: { status: QuoteStatus.VALIDATED },
     include: {
       client: true,
@@ -120,7 +122,12 @@ export default async function OrdersPage({
         </div>
       </div>
 
-      {/* 🆕 OUTILS DE TRAVAIL : BARRE DE RECHERCHE & FILTRES D'ORIGINE */}
+      {/* 📥 DEPOIR DE COMMANDE PDF - Placé bien en évidence au-dessus des filtres */}
+      <div className="w-full">
+        <ImportOrderModalWrapper />
+      </div>
+
+      {/* OUTILS DE TRAVAIL : BARRE DE RECHERCHE & FILTRES D'ORIGINE */}
       <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col md:flex-row gap-4 justify-between items-center">
         <form method="GET" action="/orders" className="relative w-full md:w-96">
           <Search className="absolute left-3 top-3 text-slate-400" size={18} />

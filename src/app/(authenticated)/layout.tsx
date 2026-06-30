@@ -7,7 +7,7 @@ import SessionProvider from "@/components/SessionProvider"
 import { getServerSession } from "next-auth/next"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { UserRole } from "@prisma/client"
+import { UserRole, AppFeature } from "@prisma/client" // 🎯 Ajout de AppFeature
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -22,22 +22,25 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
   
   let activeFeatures: string[] = []
 
-  // On vérifie que le rôle existe bien dans l'énumération Prisma
   if (session?.user?.role && Object.values(UserRole).includes(session.user.role as UserRole)) {
     const roleEnum = session.user.role as UserRole
 
-    const permissions = await prisma.rolePermission.findMany({
-      where: {
-        role: roleEnum, // 🔒 Utilise le rôle parfaitement nettoyé et typé
-        canAccess: true
-      }
-    })
-    
-    activeFeatures = permissions.map(p => p.feature)
+    // 👑 FIX POUR L'ADMIN : S'il est ADMIN, on lui injecte d'office l'intégralité des fonctionnalités Prisma
+    if (roleEnum === UserRole.ADMIN) {
+      activeFeatures = Object.values(AppFeature)
+    } else {
+      // Pour Jade et Betty, on va chercher leurs droits réels en BDD
+      const permissions = await prisma.rolePermission.findMany({
+        where: {
+          role: roleEnum,
+          canAccess: true
+        }
+      })
+      activeFeatures = permissions.map(p => p.feature)
+    }
   }
 
-  // Pour débugger facilement, affiche ce que ton serveur trouve dans ton terminal :
-  console.log(`🔑 Rôle connecté : ${session?.user?.role} | Droits BDD :`, activeFeatures)
+  console.log(`🔑 Rôle connecté : ${session?.user?.role} | Droits distribués au Layout :`, activeFeatures)
 
   return (
     <SessionProvider>

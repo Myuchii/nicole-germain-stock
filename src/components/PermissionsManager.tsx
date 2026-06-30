@@ -104,51 +104,52 @@ export default function PermissionsManager({ initialPermissions }: PermissionsMa
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50 font-bold text-slate-700">
-            {Object.values(AppFeature).map((feature) => {
-              const confPerm = permissions.find(p => p.role === UserRole.CONFECTION && p.feature === feature) || { role: UserRole.CONFECTION, feature, canAccess: false }
-              const boutPerm = permissions.find(p => p.role === UserRole.BOUTIQUE && p.feature === feature) || { role: UserRole.BOUTIQUE, feature, canAccess: false }
-              
-              return (
-                <tr key={feature} className="hover:bg-slate-50/60 transition-colors">
-                  <td className="p-4 font-medium text-slate-800 text-sm">
-                    {FEATURE_LABELS[feature]}
-                  </td>
-                  
-                  {/* 🪡 Colonne CONFECTION */}
-                  <td className="p-4 text-center bg-emerald-50/10">
-                    <button
-                      onClick={() => handleToggle(UserRole.CONFECTION, feature, confPerm.canAccess)}
-                      disabled={isPending}
-                      className={`mx-auto h-6 w-11 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none flex ${
-                        confPerm.canAccess ? 'bg-emerald-600 justify-end' : 'bg-slate-200 justify-start'
-                      }`}
-                    >
-                      <span className="h-5 w-5 rounded-full bg-white shadow-sm transition-transform" />
-                    </button>
-                  </td>
+            {/* 🔄 REMPLACE LIGNE 81 PAR CELLE-CI : */}
+{(Object.keys(FEATURE_LABELS) as AppFeature[]).map((feature) => {
+  const confPerm = permissions.find(p => p.role === UserRole.CONFECTION && p.feature === feature) || { role: UserRole.CONFECTION, feature, canAccess: false }
+  const boutPerm = permissions.find(p => p.role === UserRole.BOUTIQUE && p.feature === feature) || { role: UserRole.BOUTIQUE, feature, canAccess: false }
+  
+  return (
+    <tr key={feature} className="hover:bg-slate-50/60 transition-colors">
+      <td className="p-4 font-medium text-slate-800 text-sm">
+        {FEATURE_LABELS[feature]}
+      </td>
+      
+      {/* 🪡 Colonne CONFECTION */}
+      <td className="p-4 text-center bg-emerald-50/10">
+        <button
+          onClick={() => handleToggle(UserRole.CONFECTION, feature, confPerm.canAccess)}
+          disabled={isPending}
+          className={`mx-auto h-6 w-11 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none flex ${
+            confPerm.canAccess ? 'bg-emerald-600 justify-end' : 'bg-slate-200 justify-start'
+          }`}
+        >
+          <span className="h-5 w-5 rounded-full bg-white shadow-sm transition-transform" />
+        </button>
+      </td>
 
-                  {/* 🏪 Colonne BOUTIQUE */}
-                  <td className="p-4 text-center bg-blue-50/10">
-                    <button
-                      onClick={() => handleToggle(UserRole.BOUTIQUE, feature, boutPerm.canAccess)}
-                      disabled={isPending}
-                      className={`mx-auto h-6 w-11 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none flex ${
-                        boutPerm.canAccess ? 'bg-blue-600 justify-end' : 'bg-slate-200 justify-start'
-                      }`}
-                    >
-                      <span className="h-5 w-5 rounded-full bg-white shadow-sm transition-transform" />
-                    </button>
-                  </td>
+      {/* 🏪 Colonne BOUTIQUE */}
+      <td className="p-4 text-center bg-blue-50/10">
+        <button
+          onClick={() => handleToggle(UserRole.BOUTIQUE, feature, boutPerm.canAccess)}
+          disabled={isPending}
+          className={`mx-auto h-6 w-11 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none flex ${
+            boutPerm.canAccess ? 'bg-blue-600 justify-end' : 'bg-slate-200 justify-start'
+          }`}
+        >
+          <span className="h-5 w-5 rounded-full bg-white shadow-sm transition-transform" />
+        </button>
+      </td>
 
-                  {/* 👑 Colonne ADMIN (Bloquée au max par défaut) */}
-                  <td className="p-4 text-center bg-slate-50/30">
-                    <button disabled className="mx-auto h-6 w-11 rounded-full p-0.5 bg-indigo-600/30 flex justify-end cursor-not-allowed">
-                      <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
-                    </button>
-                  </td>
-                </tr>
-              )
-            })}
+      {/* 👑 Colonne ADMIN */}
+      <td className="p-4 text-center bg-slate-50/30">
+        <button disabled className="mx-auto h-6 w-11 rounded-full p-0.5 bg-indigo-600/30 flex justify-end cursor-not-allowed">
+          <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
+        </button>
+      </td>
+    </tr>
+  )
+})}
           </tbody>
         </table>
       </div>

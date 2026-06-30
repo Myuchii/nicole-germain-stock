@@ -1,47 +1,132 @@
 export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma'
-import { Scissors, Shirt, Package, Layers, AlertTriangle, Palette } from 'lucide-react'
+import { Scissors, Shirt, Package, Layers, AlertTriangle, Palette, ArrowLeft } from 'lucide-react'
 import ProductionCard from '@/components/ProductionCard'
-import { validateCuttingStep, validateBulkCuttingStep } from '@/app/_actions/atelier-actions'
-import { getAtelierSettings } from '@/app/_actions/settings-actions' // 🆕 Récupération des constantes d'atelier
+import { validateCuttingStep, rollbackToCouture, rollbackToCutting } from '@/app/_actions/atelier-actions'
+import { getAtelierSettings } from '@/app/_actions/settings-actions' 
 import SyncWebButton from '@/components/SyncWebButton'
+import BulkCutForm from '@/components/BulkCutForm'
+import Link from 'next/link'
 
-// 🛠️ Le Traducteur Local : Évite les collisions de fiches quand deux articles partagent le même tissu
+// 🛠️ Le Traducteur Local : Extraction chirurgicale
 function parsePrestashopProductLocal(productName: string) {
   let family = 'CUSTOM'
+  let subFamilyLabel = ''
   const textLower = productName.toLowerCase()
   
-  if (textLower.includes('housse') && textLower.includes('drap')) family = 'FITTED' 
-  else if (textLower.includes('drap') && textLower.includes('plat')) family = 'FLAT' 
-  else if (textLower.includes('couette')) family = 'ENVELOPE' 
-  else if (textLower.includes('rond') || textLower.includes('bulle')) family = 'ROUND'
-  else if (textLower.includes('traversin')) family = 'BOLSTER'
+  const isRoundStructure = textLower.includes('rond') || textLower.includes('ronde') || textLower.includes('bulle')
+  const isProtegeMatelas = textLower.includes('protè') || textLower.includes('prote') || textLower.includes('alès') || textLower.includes('ales')
+  const hasHousse = textLower.includes('housse')
+  const hasCouette = textLower.includes('couette')
 
-  let L = 200, l = 160, bonnet = 0, diametre = 210
-  const cleanTextForDims = textLower.replace(/\b2\s*x\s*(?=\d{2,3}\s*x)/g, '')
-  const widthLengthMatch = cleanTextForDims.match(/largeur\s*:\s*(\d+).*?longueur\s*:\s*(\d+)/)
-  const crossMatch = cleanTextForDims.match(/(\d{2,4})\s*x\s*(\d{2,4})/)
-
-  if (widthLengthMatch) {
-    let val1 = parseInt(widthLengthMatch[1])
-    let val2 = parseInt(widthLengthMatch[2])
-    L = Math.max(val1, val2); l = Math.min(val1, val2)
-  } else if (crossMatch) {
-    let val1 = parseInt(crossMatch[1]); let val2 = parseInt(crossMatch[2])
-    L = Math.max(val1, val2); l = Math.min(val1, val2)
+  // 1️⃣ IDENTIFICATION DE LA FAMILLE TECHNIQUE
+  if (isRoundStructure) {
+    family = 'ROUND'
+  } else if (hasHousse && textLower.includes('drap')) {
+    family = 'FITTED'
+  } else if (textLower.includes('drap') && textLower.includes('plat')) {
+    family = 'FLAT'
+  } else if (hasCouette) {
+    family = 'ENVELOPE'
+  } else if (textLower.includes('traversin')) {
+    family = 'BOLSTER'
+  } else if (isProtegeMatelas) {
+    family = 'FITTED'
   }
 
-  const bonnetMatch = textLower.match(/(?:bonnet|epaisseur|épaisseur).*?(\d{2})/)
-  if (bonnetMatch) bonnet = parseInt(bonnetMatch[1])
+  // 2️⃣ LIBELLÉ D'AFFICHAGE PRÉCIS (Priorité absolue aux protections pour éviter le piège du mot "Drap")
+  if (isProtegeMatelas) {
+    subFamilyLabel = isRoundStructure ? 'Protège matelas rond' : 'Protège matelas'
+  }
+  else if (hasCouette && !hasHousse) {
+    subFamilyLabel = 'Couette'
+  }
+  else if (hasCouette && hasHousse) {
+    subFamilyLabel = textLower.includes('bi couleur') || textLower.includes('bi-couleur') || textLower.includes('bicolore')
+      ? 'Housse de couette bicolore'
+      : 'Housse de couette'
+  }
+  else if (hasHousse && textLower.includes('drap')) {
+    subFamilyLabel = 'Drap housse'
+  }
+  else if (textLower.includes('drap') && textLower.includes('plat')) {
+    subFamilyLabel = 'Drap plat'
+  }
+  else if (textLower.includes('traversin')) {
+    subFamilyLabel = 'Traversin'
+  }
+  else if (isRoundStructure) {
+    subFamilyLabel = 'Drap rond'
+  }
 
-  return { family, dims: { L, l, bonnet, diametre } }
+  let L = 200, l = 160, bonnet = 0, diametre = 210, grammage = 0
+  let dualColorsLabel = ''
+
+  // EXTRACTION DES COULEURS BICOLORES
+  if (textLower.includes('bi couleur') || textLower.includes('bi-couleur') || textLower.includes('bicolore') || textLower.includes('dessous')) {
+    const dessousMatch = productName.match(/dessous\s*:\s*([A-Za-zÀ-ÿ]+)/i)
+    const dessusMatch = productName.match(/dessus\s*:\s*([A-Za-zÀ-ÿ]+)/i)
+    if (dessusMatch && dessousMatch) {
+      dualColorsLabel = `${dessusMatch[1]} / ${dessousMatch[1]}`
+    }
+  }
+
+  // EXTRACTION DU GRAMMAGE
+  const grammageMatch = textLower.match(/(\d{3})\s*gr/)
+  if (grammageMatch) grammage = parseInt(grammageMatch[1], 10)
+
+  // 3️⃣ TRAITEMENT DES DIMENSIONS
+  if (family === 'ROUND') {
+    const diametreMatch = textLower.match(/(?:diamètre|diametre|dimensions|diam)\s*[:.]?\s*(?:.*?)\s*(\d{2,3})/)
+    if (diametreMatch) diametre = parseInt(diametreMatch[1], 10)
+    L = diametre
+    l = diametre
+  } 
+  else {
+    const cleanTextForDims = textLower.replace(/\b2\s*x\s*(?=\d{2,3}\s*x)/g, '')
+    const largeurMatch = cleanTextForDims.match(/largeur\s*:\s*(\d+)/)
+    const longueurMatch = cleanTextForDims.match(/longueur\s*:\s*(\d+)/)
+    const crossMatch = cleanTextForDims.match(/(\d{2,4})\s*[x×]\s*(\d{2,4})/)
+
+    if (largeurMatch && longueurMatch) {
+      l = parseInt(largeurMatch[1], 10)
+      L = parseInt(longueurMatch[1], 10)
+    } else if (crossMatch) {
+      const val1 = parseInt(crossMatch[1], 10)
+      const val2 = parseInt(crossMatch[2], 10)
+      l = Math.min(val1, val2)
+      L = Math.max(val1, val2)
+    }
+  }
+
+  // 4️⃣ EXTRACTION DU BONNET
+  const bonnetSection = textLower.match(/(?:bonnet|epaisseur|épaisseur)\s*[:.]?\s*(?:[^\d]*?)\s*(\d{1,3})/)
+  if (bonnetSection) {
+    const parsedBonnet = parseInt(bonnetSection[1], 10)
+    if (parsedBonnet < 60) bonnet = parsedBonnet
+  }
+  if (bonnet === 0) {
+    const rangeMatch = textLower.match(/(?:de\s+)(\d{2})\s+à/)
+    if (rangeMatch) bonnet = parseInt(rangeMatch[1], 10)
+  }
+
+  // Forçage à 0 uniquement pour les draps ronds simples (pas de bonnet requis)
+  if (family === 'ROUND' && !isProtegeMatelas) {
+    bonnet = 0
+  }
+
+  return { family, subFamilyLabel, isRoundStructure, dualColorsLabel, dims: { L, l, bonnet, diametre, grammage } }
 }
 
-export default async function AtelierPage() {
-  // 🆕 1. Récupération des réglages globaux (pour injecter auditQuota)
+interface AtelierPageProps {
+  searchParams: Promise<{ view?: string }>
+}
+
+export default async function AtelierPage({ searchParams }: AtelierPageProps) {
+  const { view } = await searchParams
+  
   const settings = await getAtelierSettings()
 
-  // 🆕 2. On compte le nombre de pièces déjà chronométrées (avec finishedAt) pour l'atelier
   const totalTimedItemsCount = await prisma.quoteItem.count({
     where: { finishedAt: { not: null }, startedCoutureAt: { not: null } }
   })
@@ -52,9 +137,7 @@ export default async function AtelierPage() {
       statusProduction: { in: ['A_COUPER', 'EN_COUTURE', 'PRET'] } 
     },
     include: { fabric: true, quote: true },
-    orderBy: {
-      createdAt: 'asc' 
-    }
+    orderBy: { createdAt: 'asc' }
   })
 
   const boutiqueStock = await prisma.finishedProduct.findMany({
@@ -68,9 +151,11 @@ export default async function AtelierPage() {
     const nameToParse = item.customName || item.fabric?.name || ''
     const matchedProduct = parsePrestashopProductLocal(nameToParse)
 
-    const dimKey = matchedProduct.family === 'ROUND'
-      ? `DIAM-${matchedProduct.dims?.diametre || 210}`
-      : `${matchedProduct.dims?.L || 200}x${matchedProduct.dims?.l || 160}${matchedProduct.dims?.bonnet ? `-B${matchedProduct.dims.bonnet}` : ''}`
+    const colorModifier = matchedProduct.dualColorsLabel ? `-${matchedProduct.dualColorsLabel.replace(/\s+/g, '')}` : ''
+
+    const dimKey = matchedProduct.isRoundStructure
+      ? `DIAM-${matchedProduct.dims.diametre}${matchedProduct.dims.bonnet ? `-B${matchedProduct.dims.bonnet}` : ''}${matchedProduct.dims.grammage ? `-G${matchedProduct.dims.grammage}` : ''}${colorModifier}`
+      : `${matchedProduct.dims.l}x${matchedProduct.dims.L}${matchedProduct.dims.bonnet ? `-B${matchedProduct.dims.bonnet}` : ''}${matchedProduct.dims.grammage ? `-G${matchedProduct.dims.grammage}` : ''}${colorModifier}`
 
     const fabricKey = item.fabricId || 'CUSTOM'
     const uniqueGroupKey = `${fabricKey}-${matchedProduct.family}-${dimKey}`
@@ -79,15 +164,18 @@ export default async function AtelierPage() {
       fp.family === matchedProduct.family && fp.dimensions.toLowerCase().includes(dimKey.toLowerCase())
     )
 
-    const productTypeLabel = familyLabels[matchedProduct.family] || 'Article'
+    const productTypeLabel = matchedProduct.subFamilyLabel || familyLabels[matchedProduct.family] || 'Article'
+    const displayColor = matchedProduct.dualColorsLabel || item.fabric?.color || 'Standard'
 
     if (!groupedCutting[uniqueGroupKey]) {
       groupedCutting[uniqueGroupKey] = {
         fabricRef: item.fabric?.reference || 'SUR-MESURE',
         fabricName: item.fabric?.name || 'Article Libre',
-        fabricColor: item.fabric?.color || 'Standard',
+        fabricColor: displayColor, 
         productType: productTypeLabel, 
-        dimsStr: matchedProduct.family === 'ROUND' ? `Rond Diam.${matchedProduct.dims?.diametre}cm` : `${matchedProduct.dims?.L}×${matchedProduct.dims?.l}${matchedProduct.dims?.bonnet ? ` (B.${matchedProduct.dims.bonnet})` : ''}`,
+        dimsStr: matchedProduct.isRoundStructure
+          ? `Rond Diam.${matchedProduct.dims.diametre}cm${matchedProduct.dims.bonnet ? ` (B.${matchedProduct.dims.bonnet})` : ''}${matchedProduct.dims.grammage ? ` [${matchedProduct.dims.grammage}g]` : ''}`
+          : `${matchedProduct.dims.l}×${matchedProduct.dims.L}${matchedProduct.dims.bonnet ? ` (B.${matchedProduct.dims.bonnet})` : ''}${matchedProduct.dims.grammage ? ` [${matchedProduct.dims.grammage}g]` : ''}`,
         boutiqueAlert: existsInBoutique ? { name: existsInBoutique.name, qty: existsInBoutique.stockQuantity } : null,
         itemsList: []
       }
@@ -117,7 +205,7 @@ export default async function AtelierPage() {
 
   return (
     <div className="space-y-8 p-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-serif font-bold text-slate-900">Planning de l'Atelier</h1>
           <p className="text-slate-500">Suivi en temps réel de la coupe groupée et de la confection Nicole Germain.</p>
@@ -125,155 +213,209 @@ export default async function AtelierPage() {
         <SyncWebButton />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        
-        {/* COLONNE 1 : COUPE */}
-        <div className="bg-slate-100 p-4 rounded-3xl space-y-4 border border-slate-200">
-          <h2 className="font-black text-slate-800 flex items-center gap-2 px-2 text-sm uppercase tracking-wider">
-            <Scissors size={18} className="text-blue-600" /> 1. À couper ({cuttingGroups.reduce((acc, g: any) => acc + g.itemsList.length, 0)} pièces)
-          </h2>
+      {/* 🧭 NAVIGATEUR DE POSTES DE TRAVAIL PREMIUM */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-3 rounded-[2rem] border border-slate-100 shadow-sm">
+        <div className="flex flex-wrap gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-100 w-full md:w-auto">
+          <Link 
+            href="/atelier" 
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-2 ${
+              !view 
+                ? 'bg-white text-slate-900 shadow-sm border border-slate-200/40 font-extrabold' 
+                : 'text-slate-400 hover:text-slate-700 hover:bg-slate-200/30'
+            }`}
+          >
+            Vue Globale
+          </Link>
           
-          {cuttingGroups.length === 0 ? (
-            <p className="text-xs text-slate-400 font-medium text-center py-6">Rien à couper aujourd'hui.</p>
-          ) : (
-            cuttingGroups.map((group: any, idx) => {
-              const isMultiCut = group.itemsList.length > 1
-              const totalMeters = group.itemsList.reduce((sum: number, i: any) => sum + (i.quantityMeters || 0), 0)
+          <Link 
+            href="/atelier?view=coupe" 
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-2.5 ${
+              view === 'coupe' 
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20 font-extrabold' 
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/30'
+            }`}
+          >
+            <Scissors size={14} className={view === 'coupe' ? 'animate-bounce' : ''} /> 
+            <span>Poste Coupe</span>
+            <span className={`px-2 py-0.5 text-[10px] rounded-md font-mono ${view === 'coupe' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+              {cuttingGroups.reduce((acc, g: any) => acc + g.itemsList.length, 0)}
+            </span>
+          </Link>
 
-              return (
-                <div key={idx} className={`bg-white p-5 rounded-2xl border shadow-sm space-y-4 ${isMultiCut ? 'border-indigo-300 ring-2 ring-indigo-500/5 bg-indigo-50/5' : 'border-slate-100'}`}>
-                  
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap gap-1 items-center">
-                        <span className="text-[10px] font-black bg-slate-900 text-white px-2 py-0.5 rounded uppercase">{group.fabricRef}</span>
-                        <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded flex items-center gap-0.5"><Palette size={10}/> {group.fabricColor.toUpperCase()}</span>
-                        {isMultiCut && <span className="text-[10px] font-black bg-indigo-600 text-white px-2 py-0.5 rounded flex items-center gap-1"><Layers size={10}/> MULTI-COUPE ({group.itemsList.length})</span>}
+          <Link 
+            href="/atelier?view=couture" 
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-2.5 ${
+              view === 'couture' 
+                ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20 font-extrabold' 
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/30'
+            }`}
+          >
+            <Shirt size={14} /> 
+            <span>Poste Couture</span>
+            <span className={`px-2 py-0.5 text-[10px] rounded-md font-mono ${view === 'couture' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+              {enCouture.length}
+            </span>
+          </Link>
+
+          <Link 
+            href="/atelier?view=expedition" 
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-2.5 ${
+              view === 'expedition' 
+                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 font-extrabold' 
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/30'
+            }`}
+          >
+            <Package size={14} /> 
+            <span>Expédition</span>
+            <span className={`px-2 py-0.5 text-[10px] rounded-md font-mono ${view === 'expedition' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+              {pret.length}
+            </span>
+          </Link>
+        </div>
+
+      </div>
+
+      {/* 📦 LE GRID DYNAMIQUE : S'adapte au poste sélectionné */}
+      <div className={`grid gap-6 items-start ${!view ? 'grid-cols-1 lg:grid-cols-3' : 'grid-cols-1 max-w-3xl mx-auto'}`}>
+        
+        {/* COLONNE 1 : COUPE (Affiche si vue globale ou vue coupe) */}
+        {(!view || view === 'coupe') && (
+          <div className="bg-slate-100 p-4 rounded-3xl space-y-4 border border-slate-200 w-full animate-in fade-in duration-200">
+            <h2 className="font-black text-slate-800 flex items-center justify-between px-2 text-sm uppercase tracking-wider">
+              <span className="flex items-center gap-2"><Scissors size={18} className="text-blue-600" /> 1. À couper</span>
+              <span className="text-xs bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-mono">{cuttingGroups.reduce((acc, g: any) => acc + g.itemsList.length, 0)} pcs</span>
+            </h2>
+            
+            {cuttingGroups.length === 0 ? (
+              <p className="text-xs text-slate-400 font-medium text-center py-6 bg-white rounded-2xl border border-slate-100">Rien à couper aujourd'hui.</p>
+            ) : (
+              cuttingGroups.map((group: any, idx) => {
+                const isMultiCut = group.itemsList.length > 1
+                const totalMeters = group.itemsList.reduce((sum: number, i: any) => sum + (i.quantityMeters || 0), 0)
+
+                return (
+                  <div key={idx} className={`bg-white p-5 rounded-2xl border shadow-sm space-y-4 ${isMultiCut ? 'border-indigo-300 ring-2 ring-indigo-500/5 bg-indigo-50/5' : 'border-slate-100'}`}>
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap gap-1 items-center">
+                          <span className="text-[10px] font-black bg-slate-900 text-white px-2 py-0.5 rounded uppercase">{group.fabricRef}</span>
+                          <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded flex items-center gap-0.5"><Palette size={10}/> {group.fabricColor.toUpperCase()}</span>
+                          {isMultiCut && <span className="text-[10px] font-black bg-indigo-600 text-white px-2 py-0.5 rounded flex items-center gap-1"><Layers size={10}/> MULTI-COUPE ({group.itemsList.length})</span>}
+                        </div>
+                        <h3 className="font-black text-slate-800 text-base pt-1 leading-tight">{group.productType} — <span className="font-mono font-bold text-sm text-slate-600">{group.dimsStr}</span></h3>
+                        <p className="text-[11px] text-slate-400 font-medium">Tissu : {group.fabricName}</p>
                       </div>
-                      
-                      <h3 className="font-black text-slate-800 text-base pt-1 leading-tight">
-                        {group.productType} — <span className="font-mono font-bold text-sm text-slate-600">{group.dimsStr}</span>
-                      </h3>
-                      <p className="text-[11px] text-slate-400 font-medium">Tissu : {group.fabricName}</p>
+                      <div className="text-right bg-indigo-50 text-indigo-700 px-3 py-2 rounded-xl border border-indigo-100/50 min-w-[75px]">
+                        <p className="text-[9px] font-black uppercase tracking-wider opacity-60">À dérouler</p>
+                        <p className="text-base font-mono font-black">{totalMeters.toFixed(1)}<span className="text-xs font-normal ml-0.5">m</span></p>
+                      </div>
                     </div>
 
-                    <div className="text-right bg-indigo-50 text-indigo-700 px-3 py-2 rounded-xl border border-indigo-100/50 min-w-[75px]">
-                      <p className="text-[9px] font-black uppercase tracking-wider opacity-60">À dérouler</p>
-                      <p className="text-base font-mono font-black">{totalMeters.toFixed(1)}<span className="text-xs font-normal ml-0.5">m</span></p>
-                    </div>
-                  </div>
+                    {group.boutiqueAlert && (
+                      <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl flex items-start gap-1.5 text-[11px] font-medium shadow-inner">
+                        <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                        <p>Existe en Boutique ! Reste <strong>{group.boutiqueAlert.qty} u.</strong> de "{group.boutiqueAlert.name}".</p>
+                      </div>
+                    )}
 
-                  {/* Nettoyage du doublon group.boutiqueAlert effectué ici */}
-                  {group.boutiqueAlert && (
-                    <div className="p-2.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl flex items-start gap-1.5 text-[11px] font-medium shadow-inner">
-                      <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
-                      <p>Existe en Boutique ! Reste <strong>{group.boutiqueAlert.qty} u.</strong> de "{group.boutiqueAlert.name}".</p>
-                    </div>
-                  )}
+                    {isMultiCut && <BulkCutForm itemIds={group.itemsList.map((item: any) => item.id)} count={group.itemsList.length} />}
 
-                  {isMultiCut && (
-  <form 
-    onSubmit={async (e) => {
-      e.preventDefault(); // 🛑 Empêche le rechargement brutal de la page
-      const formData = new FormData(e.currentTarget);
-      
-      // On exécute l'action manuellement
-      const result = await validateBulkCuttingStep(formData);
-      
-      // Optionnel : Tu peux utiliser `result.success` ou `result.error` ici 
-      // pour afficher une notification ou un toast si tu veux !
-      if (result.success) {
-        // Optionnel : par exemple rafraîchir les stats des chronos
-      }
-    }} 
-    className="pt-1"
-  >
+                    <div className="space-y-2 border-t border-slate-100 pt-3">
                       {group.itemsList.map((item: any) => (
-                        <input key={item.id} type="hidden" name="itemIds" value={item.id} />
+                        <form key={item.id} action={validateCuttingStep} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-3 text-xs">
+                          <input type="hidden" name="itemId" value={item.id} />
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="min-w-0 flex-1">
+                              <span className="font-mono text-indigo-600 font-bold">{item.quote.reference}</span>
+                              {item.customName && <p className="text-[11px] text-slate-600 font-medium mt-0.5 leading-tight break-words">{item.customName}</p>}
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-bold shrink-0">Prévu: {item.prodTimeMinutes} min</span>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100/60">
+                            <div className="flex items-center gap-1">
+                              <span className="text-slate-400 text-[10px] uppercase font-bold">Métrage réel :</span>
+                              <input type="number" name="realMeters" step="0.1" defaultValue={Number(item.quantityMeters).toFixed(1)} className="w-14 p-1 text-center bg-white border border-slate-200 rounded-lg font-black text-indigo-600 outline-none" />
+                              <span className="text-slate-400 font-bold">m</span>
+                            </div>
+                            <div className="flex gap-1.5">
+                              <button type="submit" name="isChute" value="false" className="py-1 px-2 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">✂️ Rouleau</button>
+                              <button type="submit" name="isChute" value="true" className="py-1 px-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">♻️ Chute</button>
+                            </div>
+                          </div>
+                        </form>
                       ))}
-                      <button 
-                        type="submit"
-                        className="w-full py-2 bg-indigo-600 hover:bg-slate-900 text-white font-black rounded-xl text-[10px] uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-1"
-                      >
-                        Couper le lot ({group.itemsList.length} pièces)
-                      </button>
-                    </form>
-                  )}
-
-                  <div className="space-y-2 border-t border-slate-100 pt-3">
-                    {group.itemsList.map((item: any) => (
-                      <form 
-                        key={item.id} 
-                        action={validateCuttingStep}
-                        className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-3 text-xs"
-                      >
-                        <input type="hidden" name="itemId" value={item.id} />
-
-                        <div className="flex justify-between items-start gap-2">
-                          <div className="min-w-0 flex-1">
-                            <span className="font-mono text-indigo-600 font-bold">{item.quote.reference}</span>
-                            {item.customName && <p className="text-[11px] text-slate-600 font-medium mt-0.5 leading-tight break-words">{item.customName}</p>}
-                          </div>
-                          <span className="text-[10px] text-slate-400 font-bold shrink-0">Prévu: {item.prodTimeMinutes} min</span>
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100/60">
-                          <div className="flex items-center gap-1">
-                            <span className="text-slate-400 text-[10px] uppercase font-bold">Métrage réel :</span>
-                            <input 
-                              type="number" 
-                              name="realMeters"
-                              step="0.1"
-                              defaultValue={Number(item.quantityMeters).toFixed(1)}
-                              className="w-14 p-1 text-center bg-white border border-slate-200 rounded-lg font-black text-indigo-600 outline-none"
-                            />
-                            <span className="text-slate-400 font-bold">m</span>
-                          </div>
-
-                          <div className="flex gap-1.5">
-                            <button type="submit" name="isChute" value="false" className="py-1 px-2 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">✂️ Rouleau</button>
-                            <button type="submit" name="isChute" value="true" className="py-1 px-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">♻️ Chute</button>
-                          </div>
-                        </div>
-                      </form>
-                    ))}
+                    </div>
                   </div>
+                )
+              })
+            )}
+          </div>
+        )}
+
+        {/* COLONNE 2 : COUTURE (Affiche si vue globale ou vue couture) */}
+        {(!view || view === 'couture') && (
+          <div className="bg-slate-50 p-4 rounded-3xl space-y-4 border border-slate-100 w-full animate-in fade-in duration-200">
+            <h2 className="font-black text-slate-700 flex items-center justify-between px-2 text-sm uppercase tracking-wider">
+              <span className="flex items-center gap-2"><Shirt size={18} className="text-amber-500" /> 2. En couture</span>
+              <span className="text-xs bg-slate-200/60 text-slate-600 px-2 py-0.5 rounded-full font-mono">{enCouture.length}</span>
+            </h2>
+            {enCouture.length === 0 ? (
+              <p className="text-xs text-slate-400 font-medium text-center py-6 bg-white rounded-2xl border border-slate-100/70">Aucun ouvrage à la machine.</p>
+            ) : (
+              enCouture.map(item => (
+                <div key={item.id} className="relative group">
+                  {/* 🎯 FLÈCHE RETOUR COUTURE -> COUPE */}
+                  <form action={rollbackToCutting} className="absolute top-4 right-4 z-10">
+                    <input type="hidden" name="itemId" value={item.id} />
+                    <button 
+                      type="submit"
+                      title="Renvoyer l'article à la coupe"
+                      className="p-2 bg-slate-950 hover:bg-blue-600 text-white rounded-xl transition-all duration-200 shadow-md hover:scale-105 flex items-center justify-center group/btn"
+                    >
+                      <ArrowLeft size={14} className="group-hover/btn:-translate-x-0.5 transition-transform" />
+                    </button>
+                  </form>
+
+                  <ProductionCard item={item} currentTimedCount={totalTimedItemsCount} auditQuota={settings?.auditQuota ?? 10} />
                 </div>
-              )
-            })
-          )}
-        </div>
+              ))
+            )}
+          </div>
+        )}
 
-        {/* COLONNE 2 : COUTURE */}
-        <div className="bg-slate-50 p-4 rounded-3xl space-y-4 border border-slate-100">
-          <h2 className="font-black text-slate-700 flex items-center gap-2 px-2 text-sm uppercase tracking-wider">
-            <Shirt size={18} className="text-amber-500" /> 2. En couture ({enCouture.length})
-          </h2>
-          {enCouture.length === 0 ? (
-            <p className="text-xs text-slate-400 font-medium text-center py-6">Aucun ouvrage à la machine.</p>
-          ) : (
-            enCouture.map(item => (
-              <ProductionCard 
-                key={item.id} 
-                item={item} 
-                currentTimedCount={totalTimedItemsCount} // 🔍 🆕 Câblé dynamiquement !
-                auditQuota={settings?.auditQuota ?? 10}   // 🔍 🆕 Injecté depuis la BDD !
-              />
-            ))
-          )}
-        </div>
+        {/* COLONNE 3 : PRÊT / ENVOI (Affiche si vue globale ou vue expedition) */}
+        {(!view || view === 'expedition') && (
+          <div className="bg-slate-50 p-4 rounded-3xl space-y-4 border border-slate-100 w-full animate-in fade-in duration-200">
+            <h2 className="font-black text-slate-700 flex items-center justify-between px-2 text-sm uppercase tracking-wider">
+              <span className="flex items-center gap-2"><Package size={18} className="text-emerald-500" /> 3. À Expédier</span>
+              <span className="text-xs bg-slate-200/60 text-slate-600 px-2 py-0.5 rounded-full font-mono">{pret.length}</span>
+            </h2>
+            {pret.length === 0 ? (
+              <p className="text-xs text-slate-400 font-medium text-center py-6 bg-white rounded-2xl border border-slate-100/70">Rien en zone d'expédition.</p>
+            ) : (
+              pret.map(item => (
+                <div key={item.id} className="relative group">
+                  {/* 🎯 LA FLÈCHE DE RETOUR EN ARRIÈRE MICRO-INTERACTIVE */}
+                  <form 
+                    action={rollbackToCouture} 
+                    className="absolute top-4 right-4 z-10"
+                  >
+                    <input type="hidden" name="itemId" value={item.id} />
+                    <button 
+                      type="submit"
+                      title="Renvoyer l'article en couture"
+                      className="p-2 bg-slate-900 hover:bg-amber-500 text-white rounded-xl transition-all duration-200 shadow-md hover:scale-105 flex items-center justify-center group/btn"
+                    >
+                      <ArrowLeft size={14} className="group-hover/btn:-translate-x-0.5 transition-transform" />
+                    </button>
+                  </form>
 
-        {/* COLONNE 3 : PRÊT / ENVOI */}
-        <div className="bg-slate-50 p-4 rounded-3xl space-y-4 border border-slate-100">
-          <h2 className="font-black text-slate-700 flex items-center gap-2 px-2 text-sm uppercase tracking-wider">
-            <Package size={18} className="text-emerald-500" /> 3. À Expédier ({pret.length})
-          </h2>
-          {pret.length === 0 ? (
-            <p className="text-xs text-slate-400 font-medium text-center py-6">Rien en zone d'expédition.</p>
-          ) : (
-            pret.map(item => <ProductionCard key={item.id} item={item} currentTimedCount={0} auditQuota={0} />)
-          )}
-        </div>
+                  <ProductionCard item={item} currentTimedCount={0} auditQuota={0} />
+                </div>
+              ))
+            )}
+          </div>
+        )}
 
       </div>
     </div>

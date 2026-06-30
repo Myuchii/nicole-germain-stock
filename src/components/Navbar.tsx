@@ -1,13 +1,12 @@
-// src/components/Navbar.tsx
 'use client'
 
 import { useState } from 'react'
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
 import { Settings, Menu, X, LogOut } from 'lucide-react'
-import { AppFeature } from '@prisma/client' // 👈 Très important pour faire le lien avec la BDD
+import { AppFeature } from '@prisma/client'
 
-// 🗺️ 1. Ton nouveau tableau avec les clés de sécurité Prisma
+// 🗺️ 1. Le tableau complet de tes liens principaux
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Tableau de bord", feature: AppFeature.DASHBOARD },
   { href: "/stock-boutique", label: "Stock Boutique", feature: AppFeature.STOCK_BOUTIQUE },
@@ -18,12 +17,10 @@ const NAV_ITEMS = [
   { href: "/approvisionnement", label: "Fournisseurs", feature: AppFeature.FOURNISSEURS },
 ]
 
-// 🗺️ 2. On déclare l'interface pour accepter les permissions envoyées par le Layout
 interface NavbarProps {
   userPermissions: string[]
 }
 
-// 🗺️ 3. On passe les permissions en paramètre ici :
 export default function Navbar({ userPermissions }: NavbarProps) {
   const { data: session } = useSession()
   const [isOpen, setIsOpen] = useState(false)
@@ -31,19 +28,19 @@ export default function Navbar({ userPermissions }: NavbarProps) {
   const toggleMenu = () => setIsOpen(!isOpen)
   const closeMenu = () => setIsOpen(false)
 
+  // 👑 On récupère le rôle de la session Next-Auth (sécurisé)
   const userRole = session?.user?.role || "CONFECTION"
+  const isAdmin = userRole === "ADMIN"
 
-  // 🔍 4. Ton nouveau filtrage dynamique :
-  // Si c'est l'ADMIN, on affiche tout. Sinon, on regarde si la feature est cochée en BDD.
+  // 🔍 2. Filtrage des liens principaux
   const visibleItems = NAV_ITEMS.filter(item => 
-    userRole === "ADMIN" || userPermissions.includes(item.feature)
+    isAdmin || userPermissions.includes(item.feature)
   )
 
-  const hasSettingsAccess = userRole === "ADMIN"
+  // 🎯 3. Conditionnement dynamique des accès spécifiques
+  const hasQuotesAccess = isAdmin || userPermissions.includes(AppFeature.QUOTES)
+  const hasSettingsAccess = isAdmin || userPermissions.includes(AppFeature.SETTINGS)
 
-  // 👇 À PARTIR D'ICI, TU NE TOUCHES À RIEN ! 
-  // Tu laisses tout ton bloc "return (...)" avec tes 150 lignes de design, 
-  // car il utilise déjà la variable `visibleItems` pour faire ses boucles (.map).
   return (
     <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
       <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
@@ -69,16 +66,18 @@ export default function Navbar({ userPermissions }: NavbarProps) {
 
         {/* ACTIONS DROITE */}
         <div className="hidden lg:flex items-center gap-3">
-          {/* Le bouton Nouveau Devis est visible par tout le monde car on a créé la feature QUOTES */}
-          <Link href="/quotes" className="px-5 py-2.5 rounded-xl text-sm font-medium bg-slate-900 text-white hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-100">
-            Nouveau Devis
-          </Link>
+          {/* 📜 Bouton Devis masqué si l'utilisateur n'a pas le droit */}
+          {hasQuotesAccess && (
+            <Link href="/quotes" className="px-5 py-2.5 rounded-xl text-sm font-medium bg-slate-900 text-white hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-100">
+              Nouveau Devis
+            </Link>
+          )}
 
           <div className="flex items-center gap-3 border-l border-slate-200 pl-4">
-            {/* L'engrenage s'affiche UNIQUEMENT pour l'Admin 👇 */}
+            {/* ⚙️ L'engrenage s'affiche pour l'ADMIN ou si autorisé en BDD */}
             {hasSettingsAccess && (
               <Link 
-                href="/parametres" 
+                href="/settings" // 🎯 Ajuste sur "/parametres" si ton dossier s'appelle comme ça
                 className="p-2.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all" 
                 title="Paramètres de l'Atelier"
               >
@@ -132,7 +131,7 @@ export default function Navbar({ userPermissions }: NavbarProps) {
 
             {hasSettingsAccess && (
               <Link 
-                href="/parametres" 
+                href="/settings" 
                 onClick={closeMenu} 
                 className="px-4 py-3 rounded-xl text-base font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-2"
               >
@@ -140,15 +139,17 @@ export default function Navbar({ userPermissions }: NavbarProps) {
               </Link>
             )}
             
-            <div className="pt-4 border-t border-slate-100 mt-2">
-              <Link 
-                href="/quotes" 
-                onClick={closeMenu} 
-                className="w-full block py-3.5 rounded-xl text-center text-sm font-semibold bg-slate-900 text-white hover:bg-indigo-600 transition-all shadow-md"
-              >
-                Nouveau Devis
-              </Link>
-            </div>
+            {hasQuotesAccess && (
+              <div className="pt-4 border-t border-slate-100 mt-2">
+                <Link 
+                  href="/quotes" 
+                  onClick={closeMenu} 
+                  className="w-full block py-3.5 rounded-xl text-center text-sm font-semibold bg-slate-900 text-white hover:bg-indigo-600 transition-all shadow-md"
+                >
+                  Nouveau Devis
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       )}

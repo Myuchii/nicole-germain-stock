@@ -4,4 +4,5 @@ import { authOptions } from "@/lib/auth"
 
 const handler = NextAuth(authOptions)
 
+// Export des méthodes HTTP nommées requis par l'App Router
 export { handler as GET, handler as POST }

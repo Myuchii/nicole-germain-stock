@@ -30,8 +30,7 @@ export async function middleware(req: any) {
     return NextResponse.next()
   }
 
-  try {
-    // 🔍 On récupère toutes les fonctionnalités activées pour ce rôle spécifique
+try {
     const activePermissions = await prisma.rolePermission.findMany({
       where: {
         role: token.role,
@@ -39,30 +38,24 @@ export async function middleware(req: any) {
       }
     })
 
-    // 🗺️ On transforme la liste des énumérations trouvées en URLs réelles
-    const pagesAutorisees = activePermissions.map(p => FEATURE_URL_MAP[p.feature]).filter(Boolean)
+    // 🎯 FIX : .flatMap() fusionne les sous-tableaux en un seul tableau plat de chaînes !
+    const allowedUrls = activePermissions.flatMap(p => FEATURE_URL_MAP[p.feature] || [])
 
-    // Si aucune permission n'est configurée, on autorise quand même le dashboard ou l'espace par défaut pour éviter un crash
-    // 🛡️ Si aucune permission n'est configurée, on autorise quand même l'espace par défaut dans un sous-tableau
-    if (pagesAutorisees.length === 0) {
-      pagesAutorisees.push(token.role === "CONFECTION" ? ["/stock-atelier"] : ["/stock-boutique"])
+    if (allowedUrls.length === 0) {
+      allowedUrls.push(token.role === "CONFECTION" ? "/stock-atelier" : "/stock-boutique")
     }
 
-    // 🚧 Vérification de l'URL demandée
-    const estAutorise = pagesAutorisees.some(page => url.startsWith(page))
+    // 🚧 Vérification propre : allowedUrls est maintenant une simple string (ex: "/atelier")
+    const estAutorise = allowedUrls.some(allowedUrl => url.startsWith(allowedUrl))
     
     if (!estAutorise) {
-      // Redirection personnalisée vers sa page d'accueil par défaut en cas de refus
       const fallback = token.role === "CONFECTION" ? "/stock-atelier" : "/stock-boutique"
       return NextResponse.redirect(new URL(`${fallback}?error=AccessDenied`, req.url))
     }
 
   } catch (e) {
     console.error("Erreur Middleware Proxy:", e)
-    // En cas de problème de connexion temporaire à Neon, on laisse passer vers la racine par sécurité
-    if (url !== "/dashboard") {
-      return NextResponse.redirect(new URL("/dashboard", req.url))
-    }
+    return NextResponse.redirect(new URL("/dashboard", req.url))
   }
 
   return NextResponse.next()
@@ -81,6 +74,7 @@ export const config = {
     "/stock-atelier/:path*",
     "/approvisionnement/:path*",
     "/commandes/:path*",
+    "/orders/:path",
     "/clients/:path*",
     "/parametres/:path*"
   ],

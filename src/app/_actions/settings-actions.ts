@@ -3,10 +3,9 @@
 
 import { PrismaClient, UserRole, AppFeature } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
+import bcrypt from 'bcrypt'
 
 const prisma = new PrismaClient()
-
-// 🔍 1. Récupérer toutes les permissions actuelles (formatées pour l'interface client)
 export async function getRolePermissions() {
   try {
     const permissions = await prisma.rolePermission.findMany({
@@ -18,23 +17,11 @@ export async function getRolePermissions() {
       BOUTIQUE: []
     }
 
-    // On transforme le modèle de la BDD en tableau de chemins/features 
-    // pour que tes composants 'checked={...includes(route.path)}' restent compatibles !
+    // 🎯 FIX : On pousse directement la feature (l'Enum Prisma brut, ex: "PRODUCTION")
+    // au lieu de pousser le chemin d'URL !
     permissions.forEach(p => {
-      // Correspondance simple entre l'enum et l'URL de ton interface
-      const pathMap: Record<AppFeature, string> = {
-        DASHBOARD: '/dashboard',
-        STOCK_BOUTIQUE: '/stock-boutique',
-        STOCK_ATELIER: '/stock-atelier',
-        PRODUCTION: '/atelier',             // 🆕 Lié à l'Atelier de Jade !
-        COMMANDES: '/commandes',
-        FOURNISSEURS: '/approvisionnement',
-        QUOTES: '/quotes',                  // 🆕 Lié au calculateur de Devis !
-        CLIENTS: '/clients',
-        SETTINGS: '/settings'
-      }
-      if (matrix[p.role] && pathMap[p.feature]) {
-        matrix[p.role].push(pathMap[p.feature])
+      if (matrix[p.role]) {
+        matrix[p.role].push(p.feature) // Transmet directement "PRODUCTION", "QUOTES", etc.
       }
     })
 
@@ -221,5 +208,45 @@ export async function getChronoStats() {
   } catch (error) {
     console.error("Erreur getChronoStats:", error)
     return {}
+  }
+}
+
+export async function updateAccountPassword(formData: FormData) {
+  try {
+    const email = formData.get('email') as string
+    const currentPassword = formData.get('currentPassword') as string
+    const newPassword = formData.get('newPassword') as string
+    const confirmPassword = formData.get('confirmPassword') as string
+
+    if (!email || !currentPassword || !newPassword) {
+      return { success: false, error: "Tous les champs sont obligatoires." }
+    }
+
+    if (newPassword !== confirmPassword) {
+      return { success: false, error: "Les nouveaux mots de passe ne correspondent pas." }
+    }
+
+    // 1. Trouver l'utilisateur
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (!user || !user.password) {
+      return { success: false, error: "Utilisateur introuvable." }
+    }
+
+    // 2. Vérifier l'ancien mot de passe
+    const isValid = await bcrypt.compare(currentPassword, user.password)
+    if (!isValid) {
+      return { success: false, error: "L'ancien mot de passe est incorrect." }
+    }
+
+    // 3. Hasher et sauvegarder le nouveau
+    const hashedPassword = await bcrypt.hash(newPassword, 10)
+    await prisma.user.update({
+      where: { email },
+      data: { password: hashedPassword }
+    })
+
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error.message || "Erreur lors du changement." }
   }
 }

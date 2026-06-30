@@ -13,7 +13,7 @@ function getPsValue(field: any): string {
   return ''
 }
 
-// 🛠️ Le Traducteur : Mis à jour pour esquiver le piège des lits articulés (2x80x200)
+// 🛠️ Le Traducteur : Unifié pour les lits articulés ET les draps ronds
 function parsePrestashopProduct(productName: string) {
   let family = 'CUSTOM'
   const textLower = productName.toLowerCase()
@@ -26,31 +26,46 @@ function parsePrestashopProduct(productName: string) {
 
   let L = 200, l = 160, bonnet = 0, diametre = 210
   
-  // 🎯 FIX : On nettoie le "2x" ou "2 x" initial des lits articulés pour ne pas fausser les dimensions
-  const cleanTextForDims = textLower.replace(/\b2\s*x\s*(?=\d{2,3}\s*x)/g, '')
+// 1️⃣ CAS PARTICULIER : Produit Rond (Vosgia, NG, etc.)
+  if (family === 'ROUND') {
+    // Cette regex attrape : "diamètre : 220", "diametre:215", "diam. 210", "diam: 220"
+    const diametreMatch = textLower.match(/(?:diamètre|diametre|diam)\s*[:.]?\s*(\d{2,3})/)
+    if (diametreMatch) {
+      diametre = parseInt(diametreMatch[1], 10)
+    }
+    // Sécurité : on aligne L et l sur le diamètre pour éviter les clés vides ou cassées ailleurs
+    L = diametre
+    l = diametre
+  } 
+  // 2️⃣ CAS GÉNÉRAL : Rectangulaire (Drap housse, plat, etc.)
+  else {
+    // 🎯 On nettoie le "2x" ou "2 x" initial des lits articulés pour ne pas fausser les dimensions
+    const cleanTextForDims = textLower.replace(/\b2\s*x\s*(?=\d{2,3}\s*x)/g, '')
 
-  const widthLengthMatch = cleanTextForDims.match(/largeur\s*:\s*(\d+).*?longueur\s*:\s*(\d+)/)
-  const crossMatch = cleanTextForDims.match(/(\d{2,4})\s*x\s*(\d{2,4})/)
+    const widthLengthMatch = cleanTextForDims.match(/largeur\s*:\s*(\d+).*?longueur\s*:\s*(\d+)/)
+    const crossMatch = cleanTextForDims.match(/(\d{2,4})\s*[x×]\s*(\d{2,4})/)
 
-  if (widthLengthMatch) {
-    let val1 = parseInt(widthLengthMatch[1])
-    let val2 = parseInt(widthLengthMatch[2])
-    if (val1 >= 500) val1 = Math.round(val1 / 10)
-    if (val2 >= 500) val2 = Math.round(val2 / 10)
-    L = Math.max(val1, val2)
-    l = Math.min(val1, val2)
-  } else if (crossMatch) {
-    let val1 = parseInt(crossMatch[1])
-    let val2 = parseInt(crossMatch[2])
-    if (val1 >= 500) val1 = Math.round(val1 / 10)
-    if (val2 >= 500) val2 = Math.round(val2 / 10)
-    L = Math.max(val1, val2)
-    l = Math.min(val1, val2)
+    if (widthLengthMatch) {
+      let val1 = parseInt(widthLengthMatch[1], 10)
+      let val2 = parseInt(widthLengthMatch[2], 10)
+      if (val1 >= 500) val1 = Math.round(val1 / 10)
+      if (val2 >= 500) val2 = Math.round(val2 / 10)
+      L = Math.max(val1, val2)
+      l = Math.min(val1, val2)
+    } else if (crossMatch) {
+      let val1 = parseInt(crossMatch[1], 10)
+      let val2 = parseInt(crossMatch[2], 10)
+      if (val1 >= 500) val1 = Math.round(val1 / 10)
+      if (val2 >= 500) val2 = Math.round(val2 / 10)
+      L = Math.max(val1, val2)
+      l = Math.min(val1, val2)
+    }
   }
 
-  const bonnetMatch = textLower.match(/(?:bonnet|epaisseur|épaisseur).*?(\d{2})/)
+  // 3️⃣ Extraction globale du bonnet (commun à toutes les familles si spécifié)
+  const bonnetMatch = textLower.match(/(?:bonnet|epaisseur|épaisseur)\s*:\s*.*?(\d{2})/i) || textLower.match(/(?:de\s+)(\d{2})\s+à/)
   if (bonnetMatch) {
-    bonnet = parseInt(bonnetMatch[1])
+    bonnet = parseInt(bonnetMatch[1], 10)
   }
 
   return {
@@ -75,7 +90,7 @@ export async function syncPrestashopOrders() {
     }
 
     const cleanUrl = psUrl.replace(/\/$/, '')
-    const apiUrl = `${cleanUrl}/api/orders?ws_key=${psKey}&display=full&output_format=JSON&sort=[id_DESC]&limit=12752`
+    const apiUrl = `${cleanUrl}/api/orders?ws_key=${psKey}&display=full&output_format=JSON&sort=[id_DESC]&limit=200`
 
     const response = await fetch(apiUrl, {
       headers: {
@@ -99,7 +114,7 @@ export async function syncPrestashopOrders() {
     const data = JSON.parse(responseText)
     const rawOrders = data.orders || []
 
-    const targetStatuses = ['2', '3', '4', '5', '10']
+    const targetStatuses = ['1','2', '3', '4', '5', '10']
     const psOrders = rawOrders.filter((order: any) => targetStatuses.includes(String(order.current_state)))
 
     let importedCount = 0
@@ -237,7 +252,9 @@ export async function syncPrestashopOrders() {
         // Fix montant global
         const safeTotalPrice = parseFloat(order.total_products_wt) || parseFloat(order.total_paid_tax_incl) || 0
         const orderDateStr = order.date_add ? order.date_add.replace(' ', 'T') : new Date().toISOString()
-
+        // 🎯 On attrape le nom du module de paiement (ex: "Stripe", "bankwire")
+const psPaymentRaw = order.payment || 'Non renseigné'
+        
         // 5️⃣ Création de la commande (Quote)
         const newQuote = await prisma.quote.create({
           data: {
@@ -249,7 +266,8 @@ export async function syncPrestashopOrders() {
             quantity: totalItemsQuantity, 
             isTTC: true,
             validatedAt: new Date(orderDateStr),
-            products: structuredProductsMetadata
+            products: structuredProductsMetadata,
+            paymentMethod: psPaymentRaw
           }
         })
 

@@ -44,11 +44,14 @@ export default function ProductionCard({
     return `${mins.toString().padStart(2, '0')} min ${secs.toString().padStart(2, '0')} s`
   }
 
-  let tempsCoupeStr = "0 min"
-  if (item.startedCoutureAt) {
-    const diffMs = new Date(item.startedCoutureAt).getTime() - new Date(item.createdAt).getTime()
-    tempsCoupeStr = `${Math.round(diffMs / 1000 / 60)} min`
-  }
+let tempsCoutureStr = "Non mesuré"
+if (item.startedCoutureAt && item.finishedAt) {
+  const diffMs = new Date(item.finishedAt).getTime() - new Date(item.startedCoutureAt).getTime()
+  const totalSeconds = Math.floor(diffMs / 1000)
+  const mins = Math.floor(totalSeconds / 60)
+  const secs = totalSeconds % 60
+  tempsCoutureStr = `${mins} min ${secs} s`
+}
 
   const handleStart = async () => {
     setIsPending(true)
@@ -119,7 +122,7 @@ export default function ProductionCard({
 
       {/* RAPPEL TECHNIQUE */}
       <div className="text-xs text-slate-500 bg-slate-50 p-2 rounded-xl">
-        Métrage validé : <strong>{Number(item.quantityMeters).toFixed(1)} m</strong> | Coupe effectuée en : <strong>{tempsCoupeStr}</strong>
+        Métrage validé : <strong>{Number(item.quantityMeters).toFixed(1)} m</strong> | Couture effectuée en : <strong>{tempsCoutureStr}</strong>
       </div>
 
       {/* 🎯 ZONE INTERACTIVE DU CHRONOMÈTRE CONDITIONNELLE */}
@@ -127,7 +130,7 @@ export default function ProductionCard({
         <div className={`p-4 rounded-xl border text-center ${isCooking ? 'bg-rose-50 border-rose-200 animate-pulse' : 'bg-slate-50 border-slate-200'}`}>
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-center gap-1">
             {isQuotaMissing && <Gauge size={12} className="text-rose-500"/>}
-            {isCooking ? "⏱️ Chrono Machine en cours" : "⏱️ Temps de couture réel"}
+            {isCooking ? " Chrono en cours" : " Temps de couture réel"}
           </p>
           
           <p className={`text-xl font-mono font-black ${isCooking ? 'text-rose-600' : 'text-slate-700'}`}>
@@ -135,60 +138,73 @@ export default function ProductionCard({
           </p>
         </div>
       )}
+{/* 🎯 BOUTONS D'ACTIONS DYNAMIQUES */}
+<div>
+  {item.statusProduction === 'EN_COUTURE' && (
+    !item.startedCoutureAt ? (
+      /* Cas 1 : Le chrono n'a jamais démarré */
+      auditQuota > 0 ? (
+        <button 
+          onClick={handleStart}
+          disabled={isPending}
+          className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-95"
+        >
+          <Play size={14} fill="white" /> Lancer le chrono
+        </button>
+      ) : (
+        <button 
+          onClick={async () => {
+            setIsPending(true)
+            await advanceProductionStep(item.id, item.statusProduction)
+            setIsPending(false)
+          }}
+          disabled={isPending}
+          className="w-full py-3 bg-slate-900 hover:bg-indigo-600 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-95"
+        >
+          ✅ Terminer la couture
+        </button>
+      )
+    ) : (
+      /* Cas 2 : Un chrono a déjà été initié ou est en cours */
+      <div className="space-y-2">
+        <button 
+          onClick={handleStop}
+          disabled={isPending}
+          className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-rose-500/10 transition-all active:scale-95"
+        >
+        Stop & Couture terminée
+        </button>
 
-      {/* 🎯 BOUTONS D'ACTIONS MUTANTS SELON LE QUOTA */}
-      <div>
-        {item.statusProduction === 'EN_COUTURE' && (
-          !item.startedCoutureAt ? (
-            auditQuota > 0 ? (
-              /* Mode normal : avec audit chrono */
-              <button 
-                onClick={handleStart}
-                disabled={isPending}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-95"
-              >
-                <Play size={14} fill="white" /> 🪡 Lancer le chrono (Début couture)
-              </button>
-            ) : (
-              /* ⚙️ Mode express si quota = 0 : Validation directe, pas de chrono superflus ! */
-              <button 
-                onClick={async () => {
-                  setIsPending(true)
-                  await advanceProductionStep(item.id, item.statusProduction)
-                  setIsPending(false)
-                }}
-                disabled={isPending}
-                className="w-full py-3 bg-slate-900 hover:bg-indigo-600 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-95"
-              >
-                ✅ Terminer la couture
-              </button>
-            )
-          ) : (
-            /* Si un chrono tourne déjà, on donne toujours le moyen de le couper */
-            <button 
-              onClick={handleStop}
-              disabled={isPending}
-              className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-rose-500/10 transition-all active:scale-95"
-            >
-              <Square size={14} fill="white" /> 🛑 Stop & Couture terminée
-            </button>
-          )
-        )}
-
-        {item.statusProduction === 'PRET' && (
-          <button 
-            onClick={async () => {
-              setIsPending(true)
-              await advanceProductionStep(item.id, item.statusProduction)
-              setIsPending(false)
-            }}
-            disabled={isPending}
-            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <CheckCircle size={14} /> Expédier (Sortir du stock)
-          </button>
-        )}
+        {/* 🔄 LE BOUTON DE SECOURS : Pour écraser et relancer si besoin */}
+        <button 
+          onClick={async () => {
+            if (confirm("⚠️ Tu vas réinitialiser et relancer le chronomètre à zéro pour cet ouvrage. Confirmer ?")) {
+              await handleStart()
+            }
+          }}
+          disabled={isPending}
+          className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all"
+        >
+          Relancer le chrono
+        </button>
       </div>
+    )
+  )}
+
+  {item.statusProduction === 'PRET' && (
+    <button 
+      onClick={async () => {
+        setIsPending(true)
+        await advanceProductionStep(item.id, item.statusProduction)
+        setIsPending(false)
+      }}
+      disabled={isPending}
+      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors"
+    >
+      <CheckCircle size={14} /> Expédier (Sortir du stock)
+    </button>
+  )}
+</div>
 
     </div>
   )

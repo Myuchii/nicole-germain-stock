@@ -9,6 +9,7 @@ declare module "next-auth" {
     user: {
       id: string
       role: UserRole // ✨ On ajoute le rôle Prisma ici !
+      permissions: AppFeature[]
     } & DefaultSession["user"]
   }
 
@@ -23,5 +24,6 @@ declare module "next-auth/jwt" {
   // 🎯 On enrichit le Token JWT pour qu'il accepte le rôle
   interface JWT {
     role: UserRole
+    permissions?: AppFeature[]
   }
 }

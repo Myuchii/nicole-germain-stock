@@ -8,12 +8,12 @@ export async function startCoutureChrono(itemId: string) {
   await prisma.quoteItem.update({
     where: { id: itemId },
     data: { 
-      startedCoutureAt: new Date() // S'active ICI et pas avant !
+      startedCoutureAt: new Date(), // Écrase et relance le chrono au moment du clic
+      finishedAt: null             // Sécurité : on s'assure que la date de fin est bien nettoyée
     }
   })
   revalidatePath('/atelier')
 }
-
 // 2. Avancer les étapes générales
 export async function advanceProductionStep(itemId: string, currentStep: string, realMeters?: number) {
   let nextStep = 'A_COUPER'
@@ -169,21 +169,82 @@ export async function startSewingStep(formData: FormData) {
 
 export async function rollbackToCutting(formData: FormData) {
   const itemId = formData.get('itemId') as string
+  const mode = formData.get('rollbackMode') as 'ERROR' | 'REDO'
+
+  if (!itemId) return
 
   try {
-    // On renvoie juste l'article à la coupe pour que Nicole puisse valider sa deuxième tentative
-    await prisma.quoteItem.update({
-      where: { id: itemId },
-      data: {
-        statusProduction: 'A_COUPER'
+    await prisma.$transaction(async (tx) => {
+      const item = await tx.quoteItem.findUnique({ where: { id: itemId } })
+      if (!item) return
+
+      // 🎯 FIX : On extrait une valeur numérique stricte pour éviter le conflit null / undefined
+      const metersToHandle = item.quantityMeters ? Number(item.quantityMeters) : 0
+
+      if (mode === 'ERROR') {
+        // 1️⃣ CAS : ERREUR DE CLIC (Le tissu n'a jamais été coupé)
+        if (!item.isChute && item.fabricId && metersToHandle > 0) {
+          await tx.fabric.update({
+            where: { id: item.fabricId },
+            data: { stockMeters: { increment: metersToHandle } }
+          })
+          
+          await tx.stockMovement.create({
+            data: {
+              fabricId: item.fabricId,
+              type: "ENTRY",
+              quantityMeters: metersToHandle, // 🎯 Nombre strict inséré
+              reason: `Annulation Erreur - Retour Coupe (ID: ${item.id})`
+            }
+          })
+        }
+      } 
+      else if (mode === 'REDO') {
+        // 2️⃣ CAS : DÉJÀ COUPÉ / À REFAIRE (Le premier tissu est gâché)
+        if (item.fabricId && metersToHandle > 0) {
+          await tx.stockMovement.create({
+            data: {
+              fabricId: item.fabricId,
+              type: "EXIT",
+              quantityMeters: metersToHandle, // 🎯 Nombre strict inséré
+              reason: `Gâche / Re-coupe nécessaire pour l'article (ID: ${item.id})`
+            }
+          })
+        }
       }
+
+      // Dans tous les cas, on remet l'article à l'étape "A_COUPER"
+      await tx.quoteItem.update({
+        where: { id: itemId },
+        data: { 
+          statusProduction: 'A_COUPER',
+          isChute: false 
+        }
+      })
     })
 
     revalidatePath('/atelier')
-    return { success: true }
   } catch (error) {
-    console.error("Erreur lors du retour à la coupe :", error)
-    return { success: false, error: "Impossible de renvoyer l'article à la coupe." }
+    console.error("Erreur lors du rollback sélectif :", error)
+  }
+}
+
+export async function rollbackToCouture(formData: FormData) {
+  const itemId = formData.get('itemId') as string
+  if (!itemId) return
+
+  try {
+    await prisma.quoteItem.update({
+      where: { id: itemId },
+      data: {
+        statusProduction: 'EN_COUTURE',
+        finishedAt: null
+      }
+    })
+    revalidatePath('/atelier')
+    // 🎯 FIX : On retire le "return { success: true }"
+  } catch (error) {
+    console.error("Erreur lors du retour en couture :", error)
   }
 }
 

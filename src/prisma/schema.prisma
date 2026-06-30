@@ -155,20 +155,37 @@ model StockMovement {
 // ==========================================
 
 model Client {
-  id          String   @id @default(cuid())
-  name        String   
-  company     String?  
-  email       String?  
-  phone       String?  
-  address     String?  
-  zipCode     String?  
-  city        String?  
-  country     String?  @default("France") 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  quotes      Quote[]  
+  id        String       @id @default(cuid())
+  name      String   
+  company   String?  
+  email     String?  
+  phone     String?  
+  address   String?  
+  zipCode   String?  
+  city      String?  
+  country   String?  @default("France") 
+  source    ClientSource @default(DIRECT_ATELIER) // 🆕 Ajout du tag de provenance
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  quotes    Quote[]  
+}
+// ==========================================================
+// 🆕 AJOUT : GESTION DES PARTENAIRES B2B (Ex: Matelas-camping-car.com)
+// ==========================================================
+model Partner {
+  id        String   @id @default(cuid())
+  name      String   // Ex: "Matelas Camping-car"
+  email     String   @unique
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quotes    Quote[]  // Toutes les commandes passées par ce partenaire
 }
 
+// ==========================================================
+// 🔄 MODIFICATION : AJOUT DU LIEN PARTENAIRE SUR LE QUOTE (DEVIS/COMMANDE)
+// ==========================================================
 model Quote {
   id            String        @id @default(cuid())
   reference     String        @unique @default(cuid())
@@ -177,14 +194,12 @@ model Quote {
   quantity      Float         @default(0) 
   createdAt     DateTime      @default(now())
   validatedAt   DateTime?
-  
-  // 🆕 Nouveaux champs pour la Vente et les Délais
-  dueDate       DateTime?     // "À faire avant le..."
-  returnReason  ReturnReason? // Motif en cas de retour colis
-  taxRate       Float         @default(20.0) // TVA par défaut (20%)
-  isTaxExempt   Boolean       @default(false) // Pour exonérer les Pros
+  dueDate       DateTime?     
+  returnReason  ReturnReason? 
+  taxRate       Float         @default(20.0) 
+  isTaxExempt   Boolean       @default(false) 
   isTTC         Boolean       @default(false)
-  paymentMethod String?       // "CB", "VIREMENT", "CHEQUE", "ESPECES"
+  paymentMethod String?       
   products      Json?
   
   userId        String?
@@ -194,20 +209,37 @@ model Quote {
   clientId      String
   client        Client        @relation(fields: [clientId], references: [id])
   items         QuoteItem[]
+
+  // 🆕 Relation Partenaire : Optionnelle pour ne pas casser tes commandes boutique
+  partnerId     String?
+  partner       Partner?      @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+}
+
+// ==========================================================
+// 🔄 MODIFICATION : LES CÔTES SUR-MESURE ET LE SCHÉMA SUR L'ARTICLE
+// ==========================================================
+
+enum ClientSource {
+  WEB_VOSGIA
+  DIRECT_ATELIER
+  PARTENAIRE_B2B
+}
+
+enum PaymentStatus {
+  NON_PAYE
+  ACOMPTE_VERSE
+  PAYE
 }
 
 model QuoteItem {
   id               String    @id @default(cuid())
   quoteId          String
-  
-  // 🆕 Modifications : Le tissu devient optionnel pour permettre la saisie manuelle
   fabricId         String?   
-  accessoryId      String?   // Si l'article est un accessoire
+  accessoryId      String?   
   
-  // 🆕 Articles manuels (Saisie libre post-devis ou article spécial)
-  customName       String?   // Nom forcé à la main
-  customMargin     Float?    // Marge forcée à la main
-  customPriceHT    Float?    // Prix forcé à la main
+  customName       String?   // Ex: "Sur-matelas - Fibres Creuses 600 gr"
+  customMargin     String?   // Rétabli en String/Float selon tes besoins
+  customPriceHT    Float?    
 
   quantityMeters   Float?    
   quantityUnits    Int?
@@ -221,9 +253,21 @@ model QuoteItem {
   isChute          Boolean   @default(false)      
   discountPercent  Float     @default(0.0)        
 
-  quote            Quote      @relation(fields: [quoteId], references: [id])
-  fabric           Fabric?    @relation(fields: [fabricId], references: [id]) // Devenu optionnel
-  accessory        Accessory? @relation(fields: [accessoryId], references: [id]) // Lien vers l'accessoire
+  // 🆕 1. LES CÔTES TECHNIQUES CAMPING-CAR (A, B, C, D, E...)
+  // Optionnelles pour que tes draps housses classiques continuent de fonctionner
+  coteA            Float?    // Longueur totale / Côte A
+  coteB            Float?    // Largeur totale / Côte B
+  coteC            Float?    // Pan coupé gauche / Côte C
+  coteD            Float?    // Pan coupé droit / Côte D
+  coteE            Float?    // Décroché / Côte E
+  bonnet           Int       @default(0)
+
+  // 🆕 2. LA PIÈCE JOINTE DU SCHÉMA TECHNIQUE (URL Stockée sur S3 / Uploadthing)
+  blueprintUrl     String?   // Lien vers l'image du plan pour Jade à la coupe
+
+  quote            Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  fabric           Fabric?   @relation(fields: [fabricId], references: [id]) 
+  accessory        Accessory? @relation(fields: [accessoryId], references: [id]) 
 }
 
 // ==========================================
