@@ -287,7 +287,7 @@ export async function validateQuote(id: string) {
     })
 
     revalidatePath('/quotes')
-    revalidatePath('/orders')
+    revalidatePath('/commandes')
     revalidatePath('/atelier')
     
     return { success: true }
@@ -445,7 +445,7 @@ export async function deleteQuote(id: string, createPF: boolean = false) {
     await prisma.quote.delete({ where: { id } })
     
     revalidatePath('/quotes')
-    revalidatePath('/orders') 
+    revalidatePath('/commandes') 
     revalidatePath('/stock')
     revalidatePath('/boutique') 
     
@@ -460,7 +460,7 @@ export async function deleteQuote(id: string, createPF: boolean = false) {
 export async function archiveQuote(id: string) {
   try {
     await prisma.quote.update({ where: { id }, data: { status: 'ARCHIVED' } })
-    revalidatePath('/orders'); revalidatePath('/dashboard')
+    revalidatePath('/commandes'); revalidatePath('/dashboard')
     return { success: true }
   } catch (error) {
     return { success: false, error: "Impossible d'archiver." }
@@ -471,7 +471,7 @@ export async function archiveQuote(id: string) {
 export async function unarchiveQuote(id: string) {
   try {
     await prisma.quote.update({ where: { id }, data: { status: 'VALIDATED' } })
-    revalidatePath('/orders'); revalidatePath('/orders/archive')
+    revalidatePath('/commandes'); revalidatePath('/commandes/archive')
     return { success: true }
   } catch (error) {
     return { success: false, error: "Erreur désarchivage." }
@@ -482,7 +482,7 @@ export async function unarchiveQuote(id: string) {
 export async function updateReturnReason(id: string, reason: any) {
   try {
     await prisma.quote.update({ where: { id }, data: { returnReason: reason || null } })
-    revalidatePath('/orders/archive')
+    revalidatePath('/commandes/archive')
     return { success: true }
   } catch (error) {
     return { success: false, error: "Erreur SAV." }
@@ -514,7 +514,7 @@ export async function processCustomerReturn(quoteId: string, reason: string, act
       }
     }
 
-    revalidatePath('/orders/archive'); revalidatePath('/dashboard'); revalidatePath('/boutique')
+    revalidatePath('/commandes/archive'); revalidatePath('/dashboard'); revalidatePath('/boutique')
     return { success: true }
   } catch (error) {
     return { success: false, error: "Impossible de traiter." }

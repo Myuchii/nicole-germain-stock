@@ -19,11 +19,11 @@ const SYSTEM_ROUTES = [
   { feature: 'STOCK_BOUTIQUE' as AppFeature, label: 'Stock Boutique (Ventes)', path: '/stock-boutique' },
   { feature: 'STOCK_ATELIER' as AppFeature, label: 'Stock Atelier (Matières premières)', path: '/stock-atelier' },
   { feature: 'PRODUCTION' as AppFeature, label: 'Atelier de Production (Chronos & Coupe)', path: '/atelier' },
-  { feature: 'QUOTES' as AppFeature, label: 'Calculateur de Devis (Chiffrage)', path: '/quotes' },
+  { feature: 'DEVIS' as AppFeature, label: 'Calculateur de Devis (Chiffrage)', path: '/quotes' },
   { feature: 'COMMANDES' as AppFeature, label: 'Gestion des Commandes', path: '/commandes' },
   { feature: 'FOURNISSEURS' as AppFeature, label: 'Fournisseurs (Achats)', path: '/approvisionnement' },
   { feature: 'CLIENTS' as AppFeature, label: 'Fiches Clients (CRM)', path: '/clients' },
-  { feature: 'SETTINGS' as AppFeature, label: 'Paramètres de l\'Atelier', path: '/settings' },
+  { feature: 'PARAMETRES' as AppFeature, label: 'Paramètres de l\'Atelier', path: '/parametres' },
 ]
 
 export default function ParametresPage() {
@@ -282,7 +282,7 @@ export default function ParametresPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-600 uppercase mb-2">Email du compte à modifier</label>
-              <input type="email" name="email" placeholder="exemple@nicole-germain.fr" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:bg-white focus:border-indigo-500 transition-all" required />
+              <input type="email" name="email" placeholder="exemple@nicole-germain.com" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-800 focus:outline-none focus:bg-white focus:border-indigo-500 transition-all" required />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-600 uppercase mb-2">Mot de passe actuel</label>

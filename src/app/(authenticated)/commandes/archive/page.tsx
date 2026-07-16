@@ -40,7 +40,7 @@ export default async function ArchivePage() {
     <div className="max-w-7xl mx-auto p-6 space-y-6">
       {/* RETOUR ET TITRE */}
       <div className="flex items-center gap-4">
-        <Link href="/orders" className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 text-slate-600 transition-colors">
+        <Link href="/commandes" className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 text-slate-600 transition-colors">
           <ArrowLeft size={20} />
         </Link>
         <div>

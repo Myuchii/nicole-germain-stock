@@ -106,7 +106,7 @@ export default async function OrdersPage({
           <SyncWebButton />
 
           <Link 
-            href="/orders/archive"
+            href="/commandes/archive"
             className="px-5 py-3 bg-slate-100 text-slate-700 font-bold rounded-2xl hover:bg-slate-800 hover:text-white transition-all shadow-sm flex items-center gap-2 text-sm"
           >
             <Archive size={18} />
@@ -129,7 +129,7 @@ export default async function OrdersPage({
 
       {/* OUTILS DE TRAVAIL : BARRE DE RECHERCHE & FILTRES D'ORIGINE */}
       <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col md:flex-row gap-4 justify-between items-center">
-        <form method="GET" action="/orders" className="relative w-full md:w-96">
+        <form method="GET" action="/commandes" className="relative w-full md:w-96">
           <Search className="absolute left-3 top-3 text-slate-400" size={18} />
           <input 
             type="text" 
@@ -150,7 +150,7 @@ export default async function OrdersPage({
           ].map(tab => (
             <Link 
               key={tab.id}
-              href={`/orders?source=${tab.id}${searchQuery ? `&q=${searchQuery}` : ''}`}
+              href={`/commandes?source=${tab.id}${searchQuery ? `&q=${searchQuery}` : ''}`}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${sourceFilter === tab.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
             >
               {tab.label}

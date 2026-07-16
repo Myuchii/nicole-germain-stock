@@ -6,6 +6,7 @@ import { validateCuttingStep, rollbackToCouture, rollbackToCutting } from '@/app
 import { getAtelierSettings } from '@/app/_actions/settings-actions' 
 import SyncWebButton from '@/components/SyncWebButton'
 import BulkCutForm from '@/components/BulkCutForm'
+import { shipBulkOrder } from '@/app/_actions/atelier-actions'
 import Link from 'next/link'
 
 // 🛠️ Le Traducteur Local : Extraction chirurgicale
@@ -383,39 +384,135 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
           </div>
         )}
 
-        {/* COLONNE 3 : PRÊT / ENVOI (Affiche si vue globale ou vue expedition) */}
-        {(!view || view === 'expedition') && (
-          <div className="bg-slate-50 p-4 rounded-3xl space-y-4 border border-slate-100 w-full animate-in fade-in duration-200">
-            <h2 className="font-black text-slate-700 flex items-center justify-between px-2 text-sm uppercase tracking-wider">
-              <span className="flex items-center gap-2"><Package size={18} className="text-emerald-500" /> 3. À Expédier</span>
-              <span className="text-xs bg-slate-200/60 text-slate-600 px-2 py-0.5 rounded-full font-mono">{pret.length}</span>
-            </h2>
-            {pret.length === 0 ? (
-              <p className="text-xs text-slate-400 font-medium text-center py-6 bg-white rounded-2xl border border-slate-100/70">Rien en zone d'expédition.</p>
-            ) : (
-              pret.map(item => (
-                <div key={item.id} className="relative group">
-                  {/* 🎯 LA FLÈCHE DE RETOUR EN ARRIÈRE MICRO-INTERACTIVE */}
-                  <form 
-                    action={rollbackToCouture} 
-                    className="absolute top-4 right-4 z-10"
-                  >
-                    <input type="hidden" name="itemId" value={item.id} />
-                    <button 
-                      type="submit"
-                      title="Renvoyer l'article en couture"
-                      className="p-2 bg-slate-900 hover:bg-amber-500 text-white rounded-xl transition-all duration-200 shadow-md hover:scale-105 flex items-center justify-center group/btn"
-                    >
-                      <ArrowLeft size={14} className="group-hover/btn:-translate-x-0.5 transition-transform" />
-                    </button>
-                  </form>
+{/* COLONNE 3 : PRÊT / ENVOI (Affiche si vue globale ou vue expedition) */}
+        {(!view || view === 'expedition') && (() => {
+          // 🎯 1. Regroupement par bon de commande (Idée validée pour Nicole Germain)
+          const ordersMap: Record<string, {
+            id: string
+            reference: string
+            clientName: string
+            paymentMethod: string
+            itemsList: typeof pret
+            isComplete: boolean
+          }> = {}
 
-                  <ProductionCard item={item} currentTimedCount={0} auditQuota={0} />
-                </div>
-              ))
-            )}
-          </div>
-        )}
+          // On prend TOUTES les lignes de l'atelier qui appartiennent à une commande validée et non archivée
+          // Pour savoir si un bon est complet, on regarde si des éléments de cette commande sont encore en cours (dans items)
+            items.forEach(item => {
+            // 🎯 On force le cast ici pour éteindre l'alerte rouge de TypeScript
+            const quote = item.quote as any
+            
+            if (!ordersMap[quote.id]) {
+              ordersMap[quote.id] = {
+                id: quote.id,
+                reference: quote.reference,
+                clientName: quote.client?.name || 'Client Inconnu',
+                paymentMethod: quote.paymentMethod || 'Non renseigné',
+                itemsList: [],
+                isComplete: true
+              }
+            }
+
+            // Si l'article est prêt, on l'ajoute à la liste d'affichage de la colonne 3
+            if (item.statusProduction === 'PRET') {
+              ordersMap[quote.id].itemsList.push(item)
+            }
+
+            // ⚠️ Le petit truc en plus : si un article de la commande est encore à la coupe ou en couture, le bon est incomplet
+            if (item.statusProduction === 'A_COUPER' || item.statusProduction === 'EN_COUTURE') {
+              ordersMap[quote.id].isComplete = false
+            }
+          })
+
+          // On ne garde que les commandes qui ont au moins un article prêt à être expédié dans cette colonne
+          const activeOrders = Object.values(ordersMap).filter(o => o.itemsList.length > 0)
+
+          return (
+            <div className="bg-slate-50 p-4 rounded-3xl space-y-4 border border-slate-100 w-full animate-in fade-in duration-200">
+              <h2 className="font-black text-slate-700 flex items-center justify-between px-2 text-sm uppercase tracking-wider">
+                <span className="flex items-center gap-2"><Package size={18} className="text-emerald-500" /> 3. À Expédier</span>
+                <span className="text-xs bg-slate-200/60 text-slate-600 px-2 py-0.5 rounded-full font-mono">{pret.length} pcs</span>
+              </h2>
+
+              {activeOrders.length === 0 ? (
+                <p className="text-xs text-slate-400 font-medium text-center py-6 bg-white rounded-2xl border border-slate-100/70">Rien en zone d'expédition.</p>
+              ) : (
+                activeOrders.map((order) => (
+                  <div 
+                    key={order.id} 
+                    className={`bg-white p-5 rounded-2xl border shadow-sm space-y-4 transition-all ${
+                      order.isComplete ? 'border-emerald-300 ring-2 ring-emerald-500/5 bg-emerald-50/5' : 'border-slate-100'
+                    }`}
+                  >
+                    {/* EN-TÊTE DU BON DE COMMANDE */}
+                    <div className="flex justify-between items-start gap-2 pb-2 border-b border-slate-100">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-black bg-blue-50 text-blue-600 px-2 py-0.5 rounded uppercase tracking-wider">
+                          {order.reference}
+                        </span>
+                        <h3 className="font-bold text-slate-800 text-sm pt-1">{order.clientName}</h3>
+                        <p className="text-[10px] text-slate-400">Paiement : {order.paymentMethod}</p>
+                      </div>
+
+                      {/* Le petit truc COMPLET ou INCOMPLET */}
+                      <div className="shrink-0">
+                        {order.isComplete ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-100 text-emerald-800 rounded-xl text-[10px] font-black shadow-sm">
+                            Complet
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-800 rounded-xl text-[10px] font-black shadow-sm">
+                            Incomplet
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* PIÈCES PRÊTES DE CE BON DE COMMANDE */}
+                    <div className="space-y-2">
+                      {order.itemsList.map((item) => (
+                        <div key={item.id} className="relative group">
+                          {/* Bouton de retour en arrière vers la couture (préservé de ton code) */}
+                          <form action={rollbackToCouture} className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <input type="hidden" name="itemId" value={item.id} />
+                            <button 
+                              type="submit"
+                              title="Renvoyer l'article en couture"
+                              className="p-1.5 bg-slate-900 hover:bg-amber-500 text-white rounded-lg transition-all shadow-md flex items-center justify-center"
+                            >
+                              <ArrowLeft size={12} />
+                            </button>
+                          </form>
+
+                          {/* Utilisation de ton composant de carte standard pour l'affichage de la pièce */}
+                          <ProductionCard item={item} currentTimedCount={0} auditQuota={0} />
+                        </div>
+                      ))}
+                    </div>
+
+{/* BOUTON D'ACTION EN DESSOUS DU REGROUPEMENT SI COMPLET */}
+{order.isComplete && (
+  <div className="pt-2 border-t border-slate-100 flex justify-end">
+    {/* 🎯 Appels directs à une Server Action importée = Zéro erreur de sérialisation */}
+<form action={async (formData) => {
+  await shipBulkOrder(formData)
+}}>
+  <input type="hidden" name="quoteId" value={order.id} />
+  <button 
+    type="submit" 
+    className="w-full sm:w-auto py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold shadow-sm transition-colors whitespace-nowrap"
+  >
+    📦 Expédier le bon complet
+  </button>
+</form>
+  </div>
+)}
+                  </div>
+                ))
+              )}
+            </div>
+          )
+        })()}
 
       </div>
     </div>
