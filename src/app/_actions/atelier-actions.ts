@@ -286,31 +286,22 @@ export async function validateBulkCuttingStep(formData: FormData) {
     return { success: false, error: "Impossible de valider le lot." }
   }
 }
-
+// 📦 Dans ton fichier d'actions :
 export async function shipBulkOrder(formData: FormData) {
   const quoteId = formData.get('quoteId') as string
 
-  if (!quoteId) return { success: false, error: "ID de commande manquant." }
+  if (!quoteId) return // ❌ Retire le message d'erreur ici
 
   try {
     await prisma.$transaction(async (tx) => {
-      // 1️⃣ On passe tous les articles restants au statut EXPEDIE
       await tx.quoteItem.updateMany({
-        where: { 
-          quoteId: quoteId,
-          statusProduction: 'PRET' 
-        },
-        data: {
-          statusProduction: 'EXPEDIE'
-        }
+        where: { quoteId: quoteId, statusProduction: 'PRET' },
+        data: { statusProduction: 'EXPEDIE' }
       })
 
-      // 2️⃣ On archive la commande globale pour qu'elle disparaisse des flux actifs
       await tx.quote.update({
         where: { id: quoteId },
-        data: { 
-          status: 'ARCHIVED' // 💡 Remplace 'ARCHIVED' par 'EXPEDIE' ou 'COMPLETED' selon ton enum QuoteStatus
-        }
+        data: { status: 'DELIVERED' }
       })
     })
 
@@ -318,9 +309,12 @@ export async function shipBulkOrder(formData: FormData) {
     revalidatePath('/expedition')
     revalidatePath('/commandes')
     
-    return { success: true }
+    // ❌ RETIRE CETTE LIGNE :
+    // return { success: true } 
+    
   } catch (error) {
-    console.error("Erreur lors de l'expédition et de l'archivage du bon :", error)
-    return { success: false, error: "Impossible de valider l'expédition." }
+    console.error("Erreur lors de l'expédition :", error)
+    // ❌ RETIRE CETTE LIGNE :
+    // return { success: false, error: "..." }
   }
 }

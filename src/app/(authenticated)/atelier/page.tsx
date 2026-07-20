@@ -137,7 +137,14 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
       quote: { status: 'VALIDATED' }, 
       statusProduction: { in: ['A_COUPER', 'EN_COUTURE', 'PRET'] } 
     },
-    include: { fabric: true, quote: true },
+    include: { 
+      fabric: true, 
+      quote: {
+        include: {
+          client: true // 🟢 Récupère proprement la relation Client de manière typée
+        }
+      }
+    },
     orderBy: { createdAt: 'asc' }
   })
 
@@ -329,6 +336,23 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
                             <div className="min-w-0 flex-1">
                               <span className="font-mono text-indigo-600 font-bold">{item.quote.reference}</span>
                               {item.customName && <p className="text-[11px] text-slate-600 font-medium mt-0.5 leading-tight break-words">{item.customName}</p>}
+                              
+                              {/* 📐 NOUVEAU : Bouton de plan de coupe spécifique (PDF) pour le Camping-Car */}
+                              {item.blueprintUrl && (
+                                <div className="mt-2 flex items-center gap-1.5">
+                                  <span className="text-[9px] font-black uppercase text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-100">
+                                    CC
+                                  </span>
+                                  <a 
+                                    href={item.blueprintUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center text-[10px] font-bold text-red-700 hover:text-red-900 underline decoration-red-400 decoration-2"
+                                  >
+                                    Ouvrir le plan de coupe spécifique (PDF) 🔍
+                                  </a>
+                                </div>
+                              )}
                             </div>
                             <span className="text-[10px] text-slate-400 font-bold shrink-0">Prévu: {item.prodTimeMinutes} min</span>
                           </div>
@@ -384,7 +408,7 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
           </div>
         )}
 
-{/* COLONNE 3 : PRÊT / ENVOI (Affiche si vue globale ou vue expedition) */}
+        {/* COLONNE 3 : PRÊT / ENVOI (Affiche si vue globale ou vue expedition) */}
         {(!view || view === 'expedition') && (() => {
           // 🎯 1. Regroupement par bon de commande (Idée validée pour Nicole Germain)
           const ordersMap: Record<string, {
@@ -397,8 +421,7 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
           }> = {}
 
           // On prend TOUTES les lignes de l'atelier qui appartiennent à une commande validée et non archivée
-          // Pour savoir si un bon est complet, on regarde si des éléments de cette commande sont encore en cours (dans items)
-            items.forEach(item => {
+          items.forEach(item => {
             // 🎯 On force le cast ici pour éteindre l'alerte rouge de TypeScript
             const quote = item.quote as any
             
@@ -472,7 +495,7 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
                     <div className="space-y-2">
                       {order.itemsList.map((item) => (
                         <div key={item.id} className="relative group">
-                          {/* Bouton de retour en arrière vers la couture (préservé de ton code) */}
+                          {/* Bouton de retour en arrière vers la couture */}
                           <form action={rollbackToCouture} className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
                             <input type="hidden" name="itemId" value={item.id} />
                             <button 
@@ -490,13 +513,11 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
                       ))}
                     </div>
 
-{/* BOUTON D'ACTION EN DESSOUS DU REGROUPEMENT SI COMPLET */}
-{order.isComplete && (
-  <div className="pt-2 border-t border-slate-100 flex justify-end">
-    {/* 🎯 Appels directs à une Server Action importée = Zéro erreur de sérialisation */}
-<form action={async (formData) => {
-  await shipBulkOrder(formData)
-}}>
+                    {/* BOUTON D'ACTION EN DESSOUS DU REGROUPEMENT SI COMPLET */}
+                    {order.isComplete && (
+                      <div className="pt-2 border-t border-slate-100 flex justify-end">
+{/* 🎯 Appels directs à une Server Action importée sans enveloppe anonyme */}
+<form action={shipBulkOrder}>
   <input type="hidden" name="quoteId" value={order.id} />
   <button 
     type="submit" 
@@ -505,8 +526,8 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
     📦 Expédier le bon complet
   </button>
 </form>
-  </div>
-)}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
