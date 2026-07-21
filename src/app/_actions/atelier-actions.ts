@@ -318,3 +318,22 @@ export async function shipBulkOrder(formData: FormData) {
     // return { success: false, error: "..." }
   }
 }
+
+export async function linkFabricToItem(formData: FormData) {
+  const itemId = formData.get('itemId') as string
+  const fabricId = formData.get('fabricId') as string
+
+  if (!itemId || !fabricId) return
+
+  try {
+    await prisma.quoteItem.update({
+      where: { id: itemId },
+      data: { fabricId: fabricId }
+    })
+    
+    // Rafraîchit la page pour afficher le nouveau tissu et réorganiser les groupes
+    revalidatePath('/atelier') 
+  } catch (error) {
+    console.error("Erreur lors de la liaison du tissu :", error)
+  }
+}

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { Clock, Play, CheckCircle, Gauge, ArrowLeft, FileText } from 'lucide-react'
+import { Clock, Play, CheckCircle, Gauge, ArrowLeft, FileText, Image as ImageIcon } from 'lucide-react'
 import { startCoutureChrono, advanceProductionStep, rollbackToCutting } from '@/app/_actions/atelier-actions'
 
 export default function ProductionCard({ 
@@ -125,24 +125,66 @@ export default function ProductionCard({
         Métrage validé : <strong>{Number(item.quantityMeters).toFixed(1)} m</strong> | Couture effectuée en : <strong>{tempsCoutureStr}</strong>
       </div>
 
-      {/* 📐 NOUVEAU : BLOC D'APERÇU DU PLAN PDF (CAMPING-CAR) */}
-      {item.blueprintUrl && (
-        <div className="p-2.5 bg-red-50/50 border border-red-100 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1 text-[10px] font-black text-red-700 uppercase">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0"></span>
-            Forme Spécifique (CC)
-          </span>
-          <a 
-            href={item.blueprintUrl} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[10px] font-bold transition-colors shadow-sm"
-          >
-            <FileText size={12} />
-            Ouvrir le Plan PDF
-          </a>
-        </div>
-      )}
+      {/* 📐 🟢 NOUVEAU : BLOC D'APERÇU MULTI-DOCUMENTS (CAMPING-CAR) */}
+      {item.blueprintUrl && (() => {
+        try {
+          const files = JSON.parse(item.blueprintUrl)
+          
+          if (files.doc || files.schema) {
+            return (
+              <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0"></span>
+                  📄 Documents Camping-Car (CC)
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {files.doc && (
+                    <a 
+                      href={files.doc} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-1.5 px-2.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-[11px] font-black border border-indigo-200/60 transition-colors shadow-sm"
+                    >
+                      <FileText size={13} />
+                      <span>Voir le Bon</span>
+                    </a>
+                  )}
+                  {files.schema && (
+                    <a 
+                      href={files.schema} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-1.5 px-2.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-[11px] font-black border border-emerald-200/60 transition-colors shadow-sm"
+                    >
+                      <ImageIcon size={13} />
+                      <span>Voir le Schéma</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            )
+          }
+        } catch (e) {
+          // Secours : Si ce n'est pas du JSON stringifié (ancienne commande), on garde l'affichage unique classique
+          return (
+            <div className="p-2.5 bg-red-50/50 border border-red-100 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1 text-[10px] font-black text-red-700 uppercase">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0"></span>
+                Plan Technique
+              </span>
+              <a 
+                href={item.blueprintUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[10px] font-bold transition-colors shadow-sm"
+              >
+                <FileText size={12} />
+                Ouvrir le Plan PDF
+              </a>
+            </div>
+          )
+        }
+      })()}
 
       {/* 🎯 ZONE INTERACTIVE DU CHRONOMÈTRE CONDITIONNELLE */}
       {(auditQuota > 0 || isCooking) && (

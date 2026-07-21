@@ -2,12 +2,17 @@ export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma'
 import { Scissors, Shirt, Package, Layers, AlertTriangle, Palette, ArrowLeft } from 'lucide-react'
 import ProductionCard from '@/components/ProductionCard'
-import { validateCuttingStep, rollbackToCouture, rollbackToCutting } from '@/app/_actions/atelier-actions'
+import { validateCuttingStep, rollbackToCouture, rollbackToCutting, linkFabricToItem } from '@/app/_actions/atelier-actions'
 import { getAtelierSettings } from '@/app/_actions/settings-actions' 
 import SyncWebButton from '@/components/SyncWebButton'
 import BulkCutForm from '@/components/BulkCutForm'
 import { shipBulkOrder } from '@/app/_actions/atelier-actions'
 import Link from 'next/link'
+
+// Récupération de tous les tissus disponibles pour le menu déroulant
+const availableFabrics = await prisma.fabric.findMany({
+  orderBy: { name: 'asc' }
+})
 
 // 🛠️ Le Traducteur Local : Extraction chirurgicale
 function parsePrestashopProductLocal(productName: string) {
@@ -100,6 +105,7 @@ function parsePrestashopProductLocal(productName: string) {
     }
   }
 
+  
   // 4️⃣ EXTRACTION DU BONNET
   const bonnetSection = textLower.match(/(?:bonnet|epaisseur|épaisseur)\s*[:.]?\s*(?:[^\d]*?)\s*(\d{1,3})/)
   if (bonnetSection) {
@@ -328,48 +334,114 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
 
                     {isMultiCut && <BulkCutForm itemIds={group.itemsList.map((item: any) => item.id)} count={group.itemsList.length} />}
 
-                    <div className="space-y-2 border-t border-slate-100 pt-3">
-                      {group.itemsList.map((item: any) => (
-                        <form key={item.id} action={validateCuttingStep} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-3 text-xs">
-                          <input type="hidden" name="itemId" value={item.id} />
-                          <div className="flex justify-between items-start gap-2">
-                            <div className="min-w-0 flex-1">
-                              <span className="font-mono text-indigo-600 font-bold">{item.quote.reference}</span>
-                              {item.customName && <p className="text-[11px] text-slate-600 font-medium mt-0.5 leading-tight break-words">{item.customName}</p>}
-                              
-                              {/* 📐 NOUVEAU : Bouton de plan de coupe spécifique (PDF) pour le Camping-Car */}
-                              {item.blueprintUrl && (
-                                <div className="mt-2 flex items-center gap-1.5">
-                                  <span className="text-[9px] font-black uppercase text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-100">
-                                    CC
-                                  </span>
-                                  <a 
-                                    href={item.blueprintUrl} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center text-[10px] font-bold text-red-700 hover:text-red-900 underline decoration-red-400 decoration-2"
-                                  >
-                                    Ouvrir le plan de coupe spécifique (PDF) 🔍
-                                  </a>
-                                </div>
-                              )}
-                            </div>
-                            <span className="text-[10px] text-slate-400 font-bold shrink-0">Prévu: {item.prodTimeMinutes} min</span>
-                          </div>
-                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100/60">
-                            <div className="flex items-center gap-1">
-                              <span className="text-slate-400 text-[10px] uppercase font-bold">Métrage réel :</span>
-                              <input type="number" name="realMeters" step="0.1" defaultValue={Number(item.quantityMeters).toFixed(1)} className="w-14 p-1 text-center bg-white border border-slate-200 rounded-lg font-black text-indigo-600 outline-none" />
-                              <span className="text-slate-400 font-bold">m</span>
-                            </div>
-                            <div className="flex gap-1.5">
-                              <button type="submit" name="isChute" value="false" className="py-1 px-2 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">✂️ Rouleau</button>
-                              <button type="submit" name="isChute" value="true" className="py-1 px-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">♻️ Chute</button>
-                            </div>
-                          </div>
-                        </form>
-                      ))}
+<div className="space-y-3 border-t border-slate-100 pt-3">
+  {group.itemsList.map((item: any) => (
+    /* 🟢 On englobe la pièce dans une DIV parente qui porte la clé unique */
+    <div key={item.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-3 shadow-sm">
+      
+{/* 🟢 1. FORMULAIRE : SÉLECTION DU TISSU */}
+      <form action={linkFabricToItem} className="flex flex-col gap-1 border-b border-slate-200/60 pb-3">
+        <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Changer le rouleau assigné :</label>
+        <div className="flex items-center gap-2">
+          <input type="hidden" name="itemId" value={item.id} />
+          
+          <select 
+            name="fabricId" 
+            defaultValue={item.fabricId || ""}
+            className="flex-1 text-xs p-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-medium"
+            // ❌ Le onChange a été supprimé ici car nous sommes côté serveur
+          >
+            <option value="" disabled>Associer un rouleau de tissu...</option>
+            {availableFabrics.map((fabric: any) => (
+              <option key={fabric.id} value={fabric.id}>
+                {fabric.reference} - {fabric.name} ({fabric.color})
+              </option>
+            ))}
+          </select>
+
+          {/* 🟢 Le petit bouton magique pour valider le changement */}
+          <button 
+            type="submit" 
+            className="px-3 py-1.5 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-xs font-bold transition-colors shadow-sm"
+          >
+            Lier
+          </button>
+        </div>
+      </form>
+
+      {/* 🟢 2. FORMULAIRE : VALIDATION DE LA COUPE */}
+      <form action={validateCuttingStep} className="flex flex-col gap-3 text-xs">
+        <input type="hidden" name="itemId" value={item.id} />
+        
+        <div className="flex justify-between items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <span className="font-mono text-indigo-600 font-bold">{item.quote.reference}</span>
+            {item.customName && <p className="text-[11px] text-slate-600 font-medium mt-0.5 leading-tight break-words">{item.customName}</p>}
+            
+            {item.blueprintUrl && (() => {
+              try {
+                const files = JSON.parse(item.blueprintUrl)
+                if (files.doc || files.schema) {
+                  return (
+                    <div className="flex items-center gap-3 mt-2">
+                      {files.doc && (
+                        <a 
+                          href={`/api/documents?url=${files.doc}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200/50 transition-colors shadow-sm"
+                        >
+                          📄 Voir le Bon
+                        </a>
+                      )}
+                      {files.schema && (
+                        <a 
+                          href={`/api/documents?url=${files.schema}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold border border-emerald-200/50 transition-colors shadow-sm"
+                        >
+                          📐 Voir le Schéma
+                        </a>
+                      )}
                     </div>
+                  )
+                }
+              } catch (e) {
+                return (
+                  <div className="mt-2">
+                    <a 
+                      href={`/api/documents?url=${item.blueprintUrl}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:underline"
+                    >
+                      Consulter la fiche matelas
+                    </a>
+                  </div>
+                )
+              }
+            })()}
+          </div>
+          <span className="text-[10px] text-slate-400 font-bold shrink-0">Prévu: {item.prodTimeMinutes} min</span>
+        </div>
+        
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100/60 mt-1">
+          <div className="flex items-center gap-1">
+            <span className="text-slate-400 text-[10px] uppercase font-bold">Métrage réel :</span>
+            <input type="number" name="realMeters" step="0.1" defaultValue={Number(item.quantityMeters).toFixed(1)} className="w-14 p-1 text-center bg-white border border-slate-200 rounded-lg font-black text-indigo-600 outline-none" />
+            <span className="text-slate-400 font-bold">m</span>
+          </div>
+          <div className="flex gap-1.5">
+            <button type="submit" name="isChute" value="false" className="py-1 px-2 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">✂️ Rouleau</button>
+            <button type="submit" name="isChute" value="true" className="py-1 px-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">♻️ Chute</button>
+          </div>
+        </div>
+      </form>
+
+    </div>
+  ))}
+</div>
                   </div>
                 )
               })

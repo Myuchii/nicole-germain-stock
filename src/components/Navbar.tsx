@@ -77,7 +77,7 @@ export default function Navbar({ userPermissions }: NavbarProps) {
             {/* ⚙️ L'engrenage s'affiche pour l'ADMIN ou si autorisé en BDD */}
             {hasSettingsAccess && (
               <Link 
-                href="/settings" // 🎯 Ajuste sur "/parametres" si ton dossier s'appelle comme ça
+                href="/parametres" // 🎯 Ajuste sur "/parametres" si ton dossier s'appelle comme ça
                 className="p-2.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all" 
                 title="Paramètres de l'Atelier"
               >
@@ -131,7 +131,7 @@ export default function Navbar({ userPermissions }: NavbarProps) {
 
             {hasSettingsAccess && (
               <Link 
-                href="/settings" 
+                href="/parametres" 
                 onClick={closeMenu} 
                 className="px-4 py-3 rounded-xl text-base font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-2"
               >

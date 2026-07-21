@@ -26,6 +26,18 @@ import {
 export const dynamic = 'force-dynamic'
 const prisma = new PrismaClient()
 
+// 🟢 Le dictionnaire officiel de traduction pour passer l'anglais technique en français
+const familyLabels: Record<string, string> = { 
+  FITTED: 'Drap housse', 
+  FLAT: 'Drap plat', 
+  ENVELOPE: 'Housse de couette', 
+  ROUND: 'Drap rond', 
+  BOLSTER: 'Traversin', 
+  ALESE: 'Protège matelas',
+  CUSTOM: 'Sur-mesure',
+  'SUR-MESURE': 'Sur-mesure'
+}
+
 export default async function DashboardPage({ 
   searchParams 
 }: { 
@@ -75,7 +87,7 @@ export default async function DashboardPage({
     periodLabel = startDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
   }
 
-  // 🆕 FENÊTRE DE TEMPS DYNAMIQUE ANNEE N-1 (Exactement -1 an)
+  // FENÊTRE DE TEMPS DYNAMIQUE ANNEE N-1
   const startDatePrev = new Date(startDate)
   startDatePrev.setFullYear(startDate.getFullYear() - 1)
   
@@ -89,7 +101,7 @@ export default async function DashboardPage({
   // --- 2. REQUÊTES BDD (INCLUANT N-1) ---
   const [
     periodQuotes,
-    periodQuotesPrev, // 🆕 Chiffre d'affaires historique de l'année passée
+    periodQuotesPrev, 
     allClients,
     allQuoteItems,
     fabrics,
@@ -102,7 +114,6 @@ export default async function DashboardPage({
       where: { status: 'VALIDATED', validatedAt: { gte: startDate, lte: endDate } }, 
     }),
     prisma.quote.findMany({
-      // 🆕 Extraction N-1
       where: { status: 'VALIDATED', validatedAt: { gte: startDatePrev, lte: endDatePrev } }, 
     }),
     prisma.client.findMany(),
@@ -134,7 +145,9 @@ export default async function DashboardPage({
     const jsonProducts = (item.quote.products as any[]) || []
     const matched = jsonProducts.find(p => p.fabricId === item.fabricId) || jsonProducts[0]
     if (matched?.family) {
-      productSalesMap.set(matched.family, (productSalesMap.get(matched.family) || 0) + 1)
+      // 🟢 Traduction directe de la famille en français avant de l'ajouter aux statistiques
+      const frenchFamily = familyLabels[matched.family] || matched.family
+      productSalesMap.set(frenchFamily, (productSalesMap.get(frenchFamily) || 0) + 1)
     }
   })
 
@@ -162,12 +175,16 @@ export default async function DashboardPage({
       .sort((a, b) => b.stock - a.stock)
       .slice(0, 3)
 
-  // --- AUTRES CALCULS ---
+  // --- AUTRES CALCULS & TRADUCTION DES CHRONOMÈTRES ---
   const familyChronoStats = new Map<string, { totalRealMinutes: number, totalItemsCount: number, theoretical: number }>()
   allTimedItems.forEach(item => {
     const jsonProducts = (item.quote.products as any[]) || []
     const matched = jsonProducts.find(p => p.fabricId === item.fabricId) || jsonProducts[0]
-    const family = matched?.family || 'SUR-MESURE'
+    
+    // 🟢 Traduction de la clé de famille pour les statistiques d'audits chrono
+    const rawFamily = matched?.family || 'SUR-MESURE'
+    const family = familyLabels[rawFamily] || rawFamily
+
     if (item.finishedAt && item.startedCoutureAt) {
       const realMin = Math.round((new Date(item.finishedAt).getTime() - new Date(item.startedCoutureAt).getTime()) / 1000 / 60)
       const current = familyChronoStats.get(family) || { totalRealMinutes: 0, totalItemsCount: 0, theoretical: item.prodTimeMinutes || 30 }
@@ -191,7 +208,7 @@ export default async function DashboardPage({
   const b2bPercent = allClients.length > 0 ? Math.round((b2bClients.length / allClients.length) * 100) : 0
   const b2cPercent = allClients.length > 0 ? 100 - b2bPercent : 0
 
-  // --- 🆕 CONSTRUCTION DOUBLE DU COMPOSANT CHART (N vs N-1) ---
+  // --- CONSTRUCTION COMPOSANT CHART ---
   const chartDataMap = new Map<string, { current: number, previous: number }>()
 
   if (period === 'year') {
@@ -223,7 +240,6 @@ export default async function DashboardPage({
     })
     periodQuotesPrev.forEach(q => {
       const d = q.validatedAt || q.createdAt
-      // On aligne les jours de la semaine N-1 sur les libellés N
       const dayOffset = (d.getDay() - startDatePrev.getDay() + 7) % 7
       const targetLabel = Array.from(chartDataMap.keys())[dayOffset]
       if (targetLabel) chartDataMap.get(targetLabel)!.previous += Number(q.totalPrice)
@@ -244,11 +260,9 @@ export default async function DashboardPage({
       if (chartDataMap.has(day)) chartDataMap.get(day)!.previous += Number(q.totalPrice)
     })
   } else {
-    // Mode Jour unique
     chartDataMap.set(periodLabel, { current: totalRevenue, previous: periodQuotesPrev.reduce((sum, q) => sum + Number(q.totalPrice), 0) })
   }
 
-  // Transformation finale pour Recharts : [{ label: 'Jan', current: 1200, previous: 950 }, ...]
   const chartData = Array.from(chartDataMap.entries()).map(([label, values]) => ({ 
     label, 
     current: values.current, 
@@ -306,7 +320,6 @@ export default async function DashboardPage({
             </div>
           </div>
           
-          {/* Légende rapide N vs N-1 */}
           <div className="flex gap-4 text-[10px] font-black uppercase tracking-wider mb-4 pl-1">
             <div className="flex items-center gap-1.5 text-indigo-600">
               <span className="w-3 h-3 rounded bg-indigo-600 block"></span> Période Cible (N)
@@ -316,7 +329,6 @@ export default async function DashboardPage({
             </div>
           </div>
           
-          {/* 🎯 On envoie le tableau d'objets contenant 'current' et 'previous' */}
           <RevenueChart data={chartData} />
         </div>
 
@@ -342,7 +354,7 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Reste du Dashboard identique (Chronomètres, Best-Sellers, Dormants, SAV) */}
+      {/* CHRONOMÈTRES TRADUITS */}
       <div className="bg-slate-900 text-white p-6 rounded-[2rem] shadow-xl space-y-4">
         <div className="flex justify-between items-center border-b border-slate-800 pb-3">
           <h2 className="text-xl font-serif font-bold text-white flex items-center gap-2">
@@ -379,6 +391,7 @@ export default async function DashboardPage({
         )}
       </div>
 
+      {/* PALMARÈS EN FRANÇAIS (Top Confections inclut les libellés traduits) */}
       <div className="space-y-3">
         <h2 className="text-xl font-serif font-bold text-slate-800 flex items-center gap-2">
           <TrendingUp className="text-emerald-500" size={22} /> Palmarès des Succès (Best-Sellers {periodLabel})

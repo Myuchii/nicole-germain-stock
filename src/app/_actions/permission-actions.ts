@@ -15,7 +15,7 @@ export async function updateRolePermission(role: UserRole, feature: AppFeature, 
       create: { role, feature, canAccess }
     })
 
-    revalidatePath('/settings') // On force le rafraîchissement
+    revalidatePath('/parametres') // On force le rafraîchissement
     return { success: true }
   } catch (error) {
     return { success: false, error: "Impossible de modifier la permission." }
