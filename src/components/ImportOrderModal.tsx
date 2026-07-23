@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import pdfToText from 'react-pdftotext';
 import { saveImportedNGOrder } from '@/app/_actions/ng-order-actions';
-import { Plus, Trash2, FileText, UploadCloud } from 'lucide-react';
+import { Plus, Trash2, FileText, UploadCloud, AlertTriangle } from 'lucide-react';
 
 export default function ImportOrderModal({ onOrderImported }: { onOrderImported?: () => void }) {
   const [loading, setLoading] = useState(false);
@@ -303,16 +303,37 @@ export default function ImportOrderModal({ onOrderImported }: { onOrderImported?
           />
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-full">
-            <label className="text-slate-500 block mb-0.5 font-medium">P.U. (€)</label>
-            <input 
-              type="number" 
-              step="0.01" 
-              value={item.prixUnitaire} 
-              onChange={(e) => handleUpdateItem(idx, 'prixUnitaire', parseFloat(e.target.value) || 0)} 
-              className="w-full p-2 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-indigo-500 transition" 
-            />
-          </div>
+<div className="w-full">
+  <div className="flex justify-between items-end mb-0.5">
+    <label className="text-slate-500 block font-medium">P.U. (€)</label>
+    
+    {/* 🟢 Le symbole d'attention : n'apparaît que si le prix est à 0 */}
+    {item.prixUnitaire === 0 && (
+      <span className="text-amber-600 flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-amber-100 px-2 py-0.5 rounded-md shadow-sm">
+        <AlertTriangle size={12} strokeWidth={3} /> À vérifier
+      </span>
+    )}
+  </div>
+  
+  <input 
+    type="number" 
+    min="0" // 🟢 Empêche d'utiliser les flèches du navigateur pour aller en dessous de 0
+    step="0.01" 
+    value={item.prixUnitaire} 
+    onChange={(e) => {
+      const val = parseFloat(e.target.value)
+      // 🟢 isNaN gère le cas où l'utilisateur efface tout le champ.
+      // 🟢 Math.max(0, val) force le chiffre en positif, même s'il tape un "-" au clavier.
+      const safeVal = isNaN(val) ? 0 : Math.max(0, val)
+      handleUpdateItem(idx, 'prixUnitaire', safeVal)
+    }} 
+    className={`w-full p-2 border rounded-lg text-slate-900 focus:outline-none transition ${
+      item.prixUnitaire === 0 
+        ? 'border-amber-400 bg-amber-50/50 focus:border-amber-500 focus:ring-1 focus:ring-amber-500' // Style "Attention"
+        : 'border-slate-300 focus:border-indigo-500' // Style classique
+    }`} 
+  />
+</div>
           {formData.items.length > 1 && (
             <button onClick={() => handleRemoveItem(idx)} className="p-2 border border-red-200 text-red-500 rounded-lg bg-red-50 hover:bg-red-100 transition mt-4 shrink-0">
               <Trash2 size={16} />

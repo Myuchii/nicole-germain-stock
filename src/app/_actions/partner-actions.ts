@@ -25,16 +25,24 @@ export async function uploadToBlob(formData: FormData) {
 export async function createPartnerOrder(formData: FormData) {
   const docUrl = formData.get('docUrl') as string
   const schemaUrl = formData.get('schemaUrl') as string
+  
+  // On récupère le numéro saisi
+  const rawOrderNumber = formData.get('orderNumber') as string
 
-  if (!docUrl || !schemaUrl) {
-    return { success: false, error: "Le bon de commande et le schéma sont obligatoires." }
+  if (!docUrl || !schemaUrl || !rawOrderNumber) {
+    return { success: false, error: "Le numéro de commande, le bon et le schéma sont obligatoires." }
   }
 
   try {
     const combinedUrls = JSON.stringify({ doc: docUrl, schema: schemaUrl })
-    const reference = `CC-${Date.now().toString().slice(-6)}`
+    
+    // 🟢 On nettoie les espaces et on force le préfixe CC-
+    const cleanNumber = rawOrderNumber.trim()
+    const reference = cleanNumber.toUpperCase().startsWith('CC-') 
+      ? cleanNumber // S'il a quand même réussi à le mettre, on le garde tel quel
+      : `CC-${cleanNumber}` // Sinon on l'ajoute proprement
+    
     const dateTransmission = new Date()
-
     // 1️⃣ Récupération ou création automatique du tissu générique "CI-JOINT"
     const fallbackFabric = await prisma.fabric.upsert({
       where: { reference: "CI-JOINT" },

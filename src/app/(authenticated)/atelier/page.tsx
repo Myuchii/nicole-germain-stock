@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma'
-import { Scissors, Shirt, Package, Layers, AlertTriangle, Palette, ArrowLeft } from 'lucide-react'
+import { Scissors, Shirt, Package, Layers, AlertTriangle, Palette, ArrowLeft, Filter } from 'lucide-react'
 import ProductionCard from '@/components/ProductionCard'
 import { validateCuttingStep, rollbackToCouture, rollbackToCutting, linkFabricToItem } from '@/app/_actions/atelier-actions'
 import { getAtelierSettings } from '@/app/_actions/settings-actions' 
@@ -126,19 +126,30 @@ function parsePrestashopProductLocal(productName: string) {
 }
 
 interface AtelierPageProps {
-  searchParams: Promise<{ view?: string }>
+  // 🟢 Ajout du paramètre "type" pour filtrer (all, classic, b2b)
+  searchParams: Promise<{ view?: string; type?: string }>
 }
 
 export default async function AtelierPage({ searchParams }: AtelierPageProps) {
-  const { view } = await searchParams
+  const { view, type = 'all' } = await searchParams
   
+  // 🟢 Fonction utilitaire pour garder les filtres croisés quand on clique sur un onglet
+  const buildUrl = (targetView?: string, targetType?: string) => {
+    const params = new URLSearchParams()
+    if (targetView) params.set('view', targetView)
+    if (targetType && targetType !== 'all') params.set('type', targetType)
+    const qs = params.toString()
+    return qs ? `/atelier?${qs}` : '/atelier'
+  }
+
   const settings = await getAtelierSettings()
 
   const totalTimedItemsCount = await prisma.quoteItem.count({
     where: { finishedAt: { not: null }, startedCoutureAt: { not: null } }
   })
 
-  const items = await prisma.quoteItem.findMany({
+  // Récupération de toutes les commandes brutes
+  const allItems = await prisma.quoteItem.findMany({
     where: {
       quote: { status: 'VALIDATED' }, 
       statusProduction: { in: ['A_COUPER', 'EN_COUTURE', 'PRET'] } 
@@ -152,6 +163,16 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
       }
     },
     orderBy: { createdAt: 'asc' }
+  })
+
+  // 🟢 LE GRAND FILTRE : Séparation des flux !
+  const items = allItems.filter(item => {
+    // Une commande est B2B si sa réf commence par CC- OU si le client s'appelle CAMPING CAR
+    const isB2B = item.quote.reference.startsWith('CC-') || item.quote.client?.name === 'CAMPING CAR'
+    
+    if (type === 'b2b') return isB2B
+    if (type === 'classic') return !isB2B
+    return true // Si 'all'
   })
 
   const boutiqueStock = await prisma.finishedProduct.findMany({
@@ -227,64 +248,91 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
         <SyncWebButton />
       </div>
 
-      {/* 🧭 NAVIGATEUR DE POSTES DE TRAVAIL PREMIUM */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-3 rounded-[2rem] border border-slate-100 shadow-sm">
-        <div className="flex flex-wrap gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-100 w-full md:w-auto">
+      {/* 🧭 ZONE DE NAVIGATION ET FILTRAGE */}
+      <div className="space-y-4">
+        
+        {/* 🟢 NOUVEAU : FILTRES DES FLUX (CLASSIQUE / B2B) */}
+        <div className="flex flex-wrap gap-2 items-center bg-white p-2 rounded-2xl border border-slate-200/60 shadow-sm w-fit">
+          <div className="pl-2 pr-3 flex items-center gap-1.5 text-slate-400 font-black text-[10px] uppercase tracking-wider">
+            <Filter size={12}/> Flux
+          </div>
           <Link 
-            href="/atelier" 
-            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-2 ${
-              !view 
-                ? 'bg-white text-slate-900 shadow-sm border border-slate-200/40 font-extrabold' 
-                : 'text-slate-400 hover:text-slate-700 hover:bg-slate-200/30'
+            href={buildUrl(view, 'all')}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 ${
+              type === 'all' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border border-transparent'
             }`}
           >
-            Vue Globale
+            Tous les dossiers
           </Link>
-          
           <Link 
-            href="/atelier?view=coupe" 
-            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-2.5 ${
-              view === 'coupe' 
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20 font-extrabold' 
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/30'
+            href={buildUrl(view, 'classic')}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 ${
+              type === 'classic' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border border-transparent'
             }`}
           >
-            <Scissors size={14} className={view === 'coupe' ? 'animate-bounce' : ''} /> 
-            <span>Poste Coupe</span>
-            <span className={`px-2 py-0.5 text-[10px] rounded-md font-mono ${view === 'coupe' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
-              {cuttingGroups.reduce((acc, g: any) => acc + g.itemsList.length, 0)}
-            </span>
+            Standards / Vosgia
           </Link>
+          <Link 
+            href={buildUrl(view, 'b2b')}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 ${
+              type === 'b2b' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border border-transparent'
+            }`}
+          >
+            Sous-traitance B2B
+          </Link>
+        </div>
 
-          <Link 
-            href="/atelier?view=couture" 
-            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-2.5 ${
-              view === 'couture' 
-                ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20 font-extrabold' 
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/30'
-            }`}
-          >
-            <Shirt size={14} /> 
-            <span>Poste Couture</span>
-            <span className={`px-2 py-0.5 text-[10px] rounded-md font-mono ${view === 'couture' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
-              {enCouture.length}
-            </span>
-          </Link>
+        {/* 🧭 NAVIGATEUR DE POSTES DE TRAVAIL PREMIUM */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-3 rounded-[2rem] border border-slate-100 shadow-sm">
+          <div className="flex flex-wrap gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-100 w-full md:w-auto">
+            <Link 
+              href={buildUrl(undefined, type)} 
+              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-2 ${
+                !view ? 'bg-white text-slate-900 shadow-sm border border-slate-200/40 font-extrabold' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-200/30'
+              }`}
+            >
+              Vue Globale
+            </Link>
+            
+            <Link 
+              href={buildUrl('coupe', type)} 
+              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-2.5 ${
+                view === 'coupe' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20 font-extrabold' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/30'
+              }`}
+            >
+              <Scissors size={14} className={view === 'coupe' ? 'animate-bounce' : ''} /> 
+              <span>Poste Coupe</span>
+              <span className={`px-2 py-0.5 text-[10px] rounded-md font-mono ${view === 'coupe' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                {cuttingGroups.reduce((acc, g: any) => acc + g.itemsList.length, 0)}
+              </span>
+            </Link>
 
-          <Link 
-            href="/atelier?view=expedition" 
-            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-2.5 ${
-              view === 'expedition' 
-                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 font-extrabold' 
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/30'
-            }`}
-          >
-            <Package size={14} /> 
-            <span>Expédition</span>
-            <span className={`px-2 py-0.5 text-[10px] rounded-md font-mono ${view === 'expedition' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
-              {pret.length}
-            </span>
-          </Link>
+            <Link 
+              href={buildUrl('couture', type)} 
+              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-2.5 ${
+                view === 'couture' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20 font-extrabold' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/30'
+              }`}
+            >
+              <Shirt size={14} /> 
+              <span>Poste Couture</span>
+              <span className={`px-2 py-0.5 text-[10px] rounded-md font-mono ${view === 'couture' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                {enCouture.length}
+              </span>
+            </Link>
+
+            <Link 
+              href={buildUrl('expedition', type)} 
+              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-2.5 ${
+                view === 'expedition' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 font-extrabold' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/30'
+              }`}
+            >
+              <Package size={14} /> 
+              <span>Expédition</span>
+              <span className={`px-2 py-0.5 text-[10px] rounded-md font-mono ${view === 'expedition' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                {pret.length}
+              </span>
+            </Link>
+          </div>
         </div>
 
       </div>
@@ -334,114 +382,114 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
 
                     {isMultiCut && <BulkCutForm itemIds={group.itemsList.map((item: any) => item.id)} count={group.itemsList.length} />}
 
-<div className="space-y-3 border-t border-slate-100 pt-3">
-  {group.itemsList.map((item: any) => (
-    /* 🟢 On englobe la pièce dans une DIV parente qui porte la clé unique */
-    <div key={item.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-3 shadow-sm">
-      
-{/* 🟢 1. FORMULAIRE : SÉLECTION DU TISSU */}
-      <form action={linkFabricToItem} className="flex flex-col gap-1 border-b border-slate-200/60 pb-3">
-        <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Changer le rouleau assigné :</label>
-        <div className="flex items-center gap-2">
-          <input type="hidden" name="itemId" value={item.id} />
-          
-          <select 
-            name="fabricId" 
-            defaultValue={item.fabricId || ""}
-            className="flex-1 text-xs p-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-medium"
-            // ❌ Le onChange a été supprimé ici car nous sommes côté serveur
-          >
-            <option value="" disabled>Associer un rouleau de tissu...</option>
-            {availableFabrics.map((fabric: any) => (
-              <option key={fabric.id} value={fabric.id}>
-                {fabric.reference} - {fabric.name} ({fabric.color})
-              </option>
-            ))}
-          </select>
+                    <div className="space-y-3 border-t border-slate-100 pt-3">
+                      {group.itemsList.map((item: any) => (
+                        /* 🟢 On englobe la pièce dans une DIV parente qui porte la clé unique */
+                        <div key={item.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-3 shadow-sm">
+                          
+                          {/* 🟢 1. FORMULAIRE : SÉLECTION DU TISSU */}
+                          <form action={linkFabricToItem} className="flex flex-col gap-1 border-b border-slate-200/60 pb-3">
+                            <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Changer le rouleau assigné :</label>
+                            <div className="flex items-center gap-2">
+                              <input type="hidden" name="itemId" value={item.id} />
+                              
+                              <select 
+                                name="fabricId" 
+                                defaultValue={item.fabricId || ""}
+                                className="flex-1 text-xs p-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-medium"
+                                // ❌ Le onChange a été supprimé ici car nous sommes côté serveur
+                              >
+                                <option value="" disabled>Associer un rouleau de tissu...</option>
+                                {availableFabrics.map((fabric: any) => (
+                                  <option key={fabric.id} value={fabric.id}>
+                                    {fabric.reference} - {fabric.name} ({fabric.color})
+                                  </option>
+                                ))}
+                              </select>
 
-          {/* 🟢 Le petit bouton magique pour valider le changement */}
-          <button 
-            type="submit" 
-            className="px-3 py-1.5 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-xs font-bold transition-colors shadow-sm"
-          >
-            Lier
-          </button>
-        </div>
-      </form>
+                              {/* 🟢 Le petit bouton magique pour valider le changement */}
+                              <button 
+                                type="submit" 
+                                className="px-3 py-1.5 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-xs font-bold transition-colors shadow-sm"
+                              >
+                                Lier
+                              </button>
+                            </div>
+                          </form>
 
-      {/* 🟢 2. FORMULAIRE : VALIDATION DE LA COUPE */}
-      <form action={validateCuttingStep} className="flex flex-col gap-3 text-xs">
-        <input type="hidden" name="itemId" value={item.id} />
-        
-        <div className="flex justify-between items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <span className="font-mono text-indigo-600 font-bold">{item.quote.reference}</span>
-            {item.customName && <p className="text-[11px] text-slate-600 font-medium mt-0.5 leading-tight break-words">{item.customName}</p>}
-            
-            {item.blueprintUrl && (() => {
-              try {
-                const files = JSON.parse(item.blueprintUrl)
-                if (files.doc || files.schema) {
-                  return (
-                    <div className="flex items-center gap-3 mt-2">
-                      {files.doc && (
-                        <a 
-                          href={`/api/documents?url=${files.doc}`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200/50 transition-colors shadow-sm"
-                        >
-                          📄 Voir le Bon
-                        </a>
-                      )}
-                      {files.schema && (
-                        <a 
-                          href={`/api/documents?url=${files.schema}`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold border border-emerald-200/50 transition-colors shadow-sm"
-                        >
-                          📐 Voir le Schéma
-                        </a>
-                      )}
+                          {/* 🟢 2. FORMULAIRE : VALIDATION DE LA COUPE */}
+                          <form action={validateCuttingStep} className="flex flex-col gap-3 text-xs">
+                            <input type="hidden" name="itemId" value={item.id} />
+                            
+                            <div className="flex justify-between items-start gap-2">
+                              <div className="min-w-0 flex-1">
+                                <span className="font-mono text-indigo-600 font-bold">{item.quote.reference}</span>
+                                {item.customName && <p className="text-[11px] text-slate-600 font-medium mt-0.5 leading-tight break-words">{item.customName}</p>}
+                                
+                                {item.blueprintUrl && (() => {
+                                  try {
+                                    const files = JSON.parse(item.blueprintUrl)
+                                    if (files.doc || files.schema) {
+                                      return (
+                                        <div className="flex items-center gap-3 mt-2">
+                                          {files.doc && (
+                                            <a 
+                                              href={`/api/documents?url=${files.doc}`} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200/50 transition-colors shadow-sm"
+                                            >
+                                              📄 Voir le Bon
+                                            </a>
+                                          )}
+                                          {files.schema && (
+                                            <a 
+                                              href={`/api/documents?url=${files.schema}`} 
+                                              target="_blank" 
+                                              rel="noopener noreferrer"
+                                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold border border-emerald-200/50 transition-colors shadow-sm"
+                                            >
+                                              📐 Voir le Schéma
+                                            </a>
+                                          )}
+                                        </div>
+                                      )
+                                    }
+                                  } catch (e) {
+                                    return (
+                                      <div className="mt-2">
+                                        <a 
+                                          href={`/api/documents?url=${item.blueprintUrl}`} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          className="text-blue-500 hover:underline"
+                                        >
+                                          Consulter la fiche matelas
+                                        </a>
+                                      </div>
+                                    )
+                                  }
+                                })()}
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-bold shrink-0">Prévu: {item.prodTimeMinutes} min</span>
+                            </div>
+                            
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100/60 mt-1">
+                              <div className="flex items-center gap-1">
+                                <span className="text-slate-400 text-[10px] uppercase font-bold">Métrage réel :</span>
+                                <input type="number" name="realMeters" step="0.1" defaultValue={Number(item.quantityMeters).toFixed(1)} className="w-14 p-1 text-center bg-white border border-slate-200 rounded-lg font-black text-indigo-600 outline-none" />
+                                <span className="text-slate-400 font-bold">m</span>
+                              </div>
+                              <div className="flex gap-1.5">
+                                <button type="submit" name="isChute" value="false" className="py-1 px-2 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">✂️ Rouleau</button>
+                                <button type="submit" name="isChute" value="true" className="py-1 px-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">♻️ Chute</button>
+                              </div>
+                            </div>
+                          </form>
+
+                        </div>
+                      ))}
                     </div>
-                  )
-                }
-              } catch (e) {
-                return (
-                  <div className="mt-2">
-                    <a 
-                      href={`/api/documents?url=${item.blueprintUrl}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-blue-500 hover:underline"
-                    >
-                      Consulter la fiche matelas
-                    </a>
-                  </div>
-                )
-              }
-            })()}
-          </div>
-          <span className="text-[10px] text-slate-400 font-bold shrink-0">Prévu: {item.prodTimeMinutes} min</span>
-        </div>
-        
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100/60 mt-1">
-          <div className="flex items-center gap-1">
-            <span className="text-slate-400 text-[10px] uppercase font-bold">Métrage réel :</span>
-            <input type="number" name="realMeters" step="0.1" defaultValue={Number(item.quantityMeters).toFixed(1)} className="w-14 p-1 text-center bg-white border border-slate-200 rounded-lg font-black text-indigo-600 outline-none" />
-            <span className="text-slate-400 font-bold">m</span>
-          </div>
-          <div className="flex gap-1.5">
-            <button type="submit" name="isChute" value="false" className="py-1 px-2 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">✂️ Rouleau</button>
-            <button type="submit" name="isChute" value="true" className="py-1 px-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">♻️ Chute</button>
-          </div>
-        </div>
-      </form>
-
-    </div>
-  ))}
-</div>
                   </div>
                 )
               })
@@ -588,16 +636,16 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
                     {/* BOUTON D'ACTION EN DESSOUS DU REGROUPEMENT SI COMPLET */}
                     {order.isComplete && (
                       <div className="pt-2 border-t border-slate-100 flex justify-end">
-{/* 🎯 Appels directs à une Server Action importée sans enveloppe anonyme */}
-<form action={shipBulkOrder}>
-  <input type="hidden" name="quoteId" value={order.id} />
-  <button 
-    type="submit" 
-    className="w-full sm:w-auto py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold shadow-sm transition-colors whitespace-nowrap"
-  >
-    📦 Expédier le bon complet
-  </button>
-</form>
+                        {/* 🎯 Appels directs à une Server Action importée sans enveloppe anonyme */}
+                        <form action={shipBulkOrder}>
+                          <input type="hidden" name="quoteId" value={order.id} />
+                          <button 
+                            type="submit" 
+                            className="w-full sm:w-auto py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold shadow-sm transition-colors whitespace-nowrap"
+                          >
+                            📦 Expédier le bon complet
+                          </button>
+                        </form>
                       </div>
                     )}
                   </div>

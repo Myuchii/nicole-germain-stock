@@ -286,36 +286,36 @@ export async function validateBulkCuttingStep(formData: FormData) {
     return { success: false, error: "Impossible de valider le lot." }
   }
 }
+
 // 📦 Dans ton fichier d'actions :
 export async function shipBulkOrder(formData: FormData) {
   const quoteId = formData.get('quoteId') as string
 
-  if (!quoteId) return // ❌ Retire le message d'erreur ici
+  if (!quoteId) return 
 
   try {
     await prisma.$transaction(async (tx) => {
+      // 1. On passe toutes les pièces prêtes en "EXPEDIE"
       await tx.quoteItem.updateMany({
         where: { quoteId: quoteId, statusProduction: 'PRET' },
         data: { statusProduction: 'EXPEDIE' }
       })
 
+      // 🟢 2. C'est ici ! On passe le bon de commande global en "ARCHIVED"
       await tx.quote.update({
         where: { id: quoteId },
-        data: { status: 'DELIVERED' }
+        data: { status: 'ARCHIVED' }
       })
     })
 
+    // On rafraîchit toutes les vues concernées
     revalidatePath('/atelier')
     revalidatePath('/expedition')
     revalidatePath('/commandes')
-    
-    // ❌ RETIRE CETTE LIGNE :
-    // return { success: true } 
+    revalidatePath('/partner/dashboard') // 🟢 Ajouté pour mettre à jour l'écran du Camping-Car Man !
     
   } catch (error) {
     console.error("Erreur lors de l'expédition :", error)
-    // ❌ RETIRE CETTE LIGNE :
-    // return { success: false, error: "..." }
   }
 }
 

@@ -4,12 +4,15 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createPartnerOrder, uploadToBlob } from '@/app/_actions/partner-actions'
-import { UploadCloud, FileText, ChevronRight, ArrowLeft, Image as ImageIcon, CheckCircle } from 'lucide-react'
+import { UploadCloud, FileText, ChevronRight, ArrowLeft, Image as ImageIcon, CheckCircle, Hash } from 'lucide-react'
 
 export default function NouvelleCommandePartnerPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   
+  // 🟢 NOUVEAU : État pour le numéro de commande
+  const [orderNumber, setOrderNumber] = useState('')
+
   // États pour les deux fichiers obligatoires
   const [docUrl, setDocUrl] = useState<string | null>(null)
   const [schemaUrl, setSchemaUrl] = useState<string | null>(null)
@@ -17,7 +20,6 @@ export default function NouvelleCommandePartnerPage() {
   const [uploadingDoc, setUploadingDoc] = useState(false)
   const [uploadingSchema, setUploadingSchema] = useState(false)
 
-  // 🟢 LA VRAIE FONCTION VERCEL BLOB CONNECTÉE
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>, type: 'doc' | 'schema') => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -30,7 +32,6 @@ export default function NouvelleCommandePartnerPage() {
       const formData = new FormData()
       formData.append('file', file)
 
-      // Envoi du vrai fichier au serveur pour Vercel Blob
       const result = await uploadToBlob(formData)
 
       if (result.url) {
@@ -53,6 +54,13 @@ export default function NouvelleCommandePartnerPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    
+    // 🟢 Vérification du numéro de commande
+    if (!orderNumber.trim()) {
+      alert("Veuillez saisir un numéro de commande.")
+      return
+    }
+
     if (!docUrl || !schemaUrl) {
       alert("Les deux fichiers (le Bon de commande ET le Schéma) sont obligatoires.")
       return
@@ -61,9 +69,10 @@ export default function NouvelleCommandePartnerPage() {
     setLoading(true)
     const formData = new FormData()
     
+    // 🟢 Ajout du numéro de commande dans les données envoyées au serveur
+    formData.append('orderNumber', orderNumber)
     formData.append('docUrl', docUrl)
     formData.append('schemaUrl', schemaUrl)
-    formData.append('customName', 'Commande Camping-Car Double Fichier')
 
     try {
       const res = await createPartnerOrder(formData)
@@ -94,9 +103,34 @@ export default function NouvelleCommandePartnerPage() {
       </div>
 
       {/* ZONE DE FORMULAIRE */}
-      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-[2rem] border border-slate-200/80 shadow-sm space-y-6">
+      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-[2rem] border border-slate-200/80 shadow-sm space-y-8">
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* 🟢 NOUVEAU : CHAMP NUMÉRO DE COMMANDE */}
+{/* 🟢 CHAMP NUMÉRO DE COMMANDE AVEC PRÉFIXE "CC-" FIXE */}
+        <div className="space-y-3">
+          <label className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+            <Hash size={14} className="text-indigo-500" /> Référence / Numéro de commande
+          </label>
+          <div className="flex">
+            <span className="inline-flex items-center px-4 rounded-l-xl border border-r-0 border-slate-200 bg-slate-100 text-slate-500 font-black text-sm">
+              CC-
+            </span>
+            <input
+              type="text"
+              value={orderNumber}
+              onChange={(e) => {
+                // On empêche le partenaire de taper "CC-" s'il fait un copier-coller
+                const val = e.target.value.replace(/^CC-/i, '')
+                setOrderNumber(val)
+              }}
+              placeholder="Ex: 2026-458"
+              required
+              className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-r-xl text-sm font-bold text-slate-800 placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
           
           {/* FICHES 1 : LE BON DE COMMANDE WORD / TEXTE */}
           <div className="space-y-3">
@@ -105,7 +139,6 @@ export default function NouvelleCommandePartnerPage() {
             </label>
             
             <div className={`border-2 border-dashed rounded-2xl p-6 text-center transition-colors relative group h-40 flex flex-col items-center justify-center ${docUrl ? 'border-emerald-200 bg-emerald-50/10' : 'border-slate-200 hover:border-indigo-500 bg-slate-50'}`}>
-              {/* 🟢 Changement ici pour appeler handleFileSelect */}
               <input type="file" accept=".doc,.docx,application/msword,application/pdf" onChange={(e) => handleFileSelect(e, 'doc')} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
               
               {docUrl ? (
@@ -130,7 +163,6 @@ export default function NouvelleCommandePartnerPage() {
             </label>
             
             <div className={`border-2 border-dashed rounded-2xl p-6 text-center transition-colors relative group h-40 flex flex-col items-center justify-center ${schemaUrl ? 'border-emerald-200 bg-emerald-50/10' : 'border-slate-200 hover:border-indigo-500 bg-slate-50'}`}>
-              {/* 🟢 Changement ici pour appeler handleFileSelect */}
               <input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileSelect(e, 'schema')} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
               
               {schemaUrl ? (
@@ -151,10 +183,10 @@ export default function NouvelleCommandePartnerPage() {
         </div>
 
         {/* BOUTON DE TRANSMISSION GLOBAL */}
-        <div className="pt-4 border-t border-slate-100 flex justify-end">
+        <div className="pt-6 border-t border-slate-100 flex justify-end">
           <button 
             type="submit" 
-            disabled={loading || uploadingDoc || uploadingSchema || !docUrl || !schemaUrl} 
+            disabled={loading || uploadingDoc || uploadingSchema || !docUrl || !schemaUrl || !orderNumber.trim()} 
             className="w-full sm:w-auto px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-colors disabled:opacity-40 flex items-center justify-center gap-2 shadow-md shadow-indigo-600/10"
           >
             {loading ? 'Transmission en cours...' : 'Envoyer le dossier complet à l\'atelier'}
