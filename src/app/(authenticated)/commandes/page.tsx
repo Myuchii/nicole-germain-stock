@@ -3,14 +3,13 @@ export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma' 
 import { QuoteStatus } from '@prisma/client'
 import Link from 'next/link'
-import { CheckCircle, Archive, Search } from 'lucide-react'
+import { CheckCircle, Archive, Search, AlertCircle, Wallet } from 'lucide-react'
 import { OrderCard } from '@/components/OrderCard'
 import SyncWebButton from '@/components/SyncWebButton'
 import ImportOrderModalWrapper from '@/components/ImportOrderModalWrapper'
 
 async function getOrders() {
   return await prisma.quote.findMany({
-
     where: { status: QuoteStatus.VALIDATED },
     include: {
       client: true,
@@ -30,6 +29,7 @@ interface OrderProps {
   isTTC: boolean
   createdAt: Date
   validatedAt: Date | null
+  isPaid: boolean // 🟢 NOUVELLE LIGNE
   client: {
     id: string
     name: string
@@ -70,7 +70,6 @@ export default async function OrdersPage({
 
   const orders = await getOrders() as unknown as OrderProps[]
 
-  // 🎯 FILTRAGE DYNAMIQUE BASÉ SUR TA RÉFÉRENCE "VOS-#", "NG" OU SUR PLACE
   const filteredOrders = orders.filter(order => {
     let provenance = 'SUR_PLACE' 
     const refUpper = order.reference.toUpperCase()
@@ -122,7 +121,7 @@ export default async function OrdersPage({
         </div>
       </div>
 
-      {/* 📥 DEPOIR DE COMMANDE PDF - Placé bien en évidence au-dessus des filtres */}
+      {/* DEPOIR DE COMMANDE PDF */}
       <div className="w-full">
         <ImportOrderModalWrapper />
       </div>
@@ -169,10 +168,12 @@ export default async function OrdersPage({
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredOrders.map((order) => (
-            <OrderCard 
-              key={order.id} 
-              order={order} 
-            />
+            <div key={order.id} className="flex flex-col gap-2">
+              
+              {/* Ta carte habituelle */}
+              <OrderCard order={order} />
+
+            </div>
           ))}
         </div>
       )}

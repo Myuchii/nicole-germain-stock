@@ -337,3 +337,23 @@ export async function linkFabricToItem(formData: FormData) {
     console.error("Erreur lors de la liaison du tissu :", error)
   }
 }
+
+export async function togglePaymentStatus(formData: FormData) {
+  const quoteId = formData.get('quoteId') as string
+  const isPaid = formData.get('isPaid') === 'true' // Vérifie l'état de la case
+
+  if (!quoteId) return
+
+  try {
+    await prisma.quote.update({
+      where: { id: quoteId },
+      data: { isPaid: isPaid }
+    })
+    
+    // On met à jour les deux pages d'un coup
+    revalidatePath('/commandes') 
+    revalidatePath('/atelier')
+  } catch (error) {
+    console.error("Erreur lors de la validation du paiement :", error)
+  }
+}

@@ -153,7 +153,10 @@ const availableFabrics = await prisma.fabric.findMany({
   // Récupération de toutes les commandes brutes
   const allItems = await prisma.quoteItem.findMany({
     where: {
-      quote: { status: 'VALIDATED' }, 
+      quote: { 
+        status: 'VALIDATED', 
+        isPaid: true // 🟢 LA RÈGLE D'OR : N'entre à l'atelier que si c'est payé !
+      },
       statusProduction: { in: ['A_COUPER', 'EN_COUTURE', 'PRET'] } 
     },
     include: { 
