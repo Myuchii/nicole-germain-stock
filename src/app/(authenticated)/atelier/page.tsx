@@ -9,11 +9,6 @@ import BulkCutForm from '@/components/BulkCutForm'
 import { shipBulkOrder } from '@/app/_actions/atelier-actions'
 import Link from 'next/link'
 
-// Récupération de tous les tissus disponibles pour le menu déroulant
-const availableFabrics = await prisma.fabric.findMany({
-  orderBy: { name: 'asc' }
-})
-
 // 🛠️ Le Traducteur Local : Extraction chirurgicale
 function parsePrestashopProductLocal(productName: string) {
   let family = 'CUSTOM'
@@ -132,6 +127,13 @@ interface AtelierPageProps {
 
 export default async function AtelierPage({ searchParams }: AtelierPageProps) {
   const { view, type = 'all' } = await searchParams
+
+
+// Récupération de tous les tissus disponibles pour le menu déroulant
+const availableFabrics = await prisma.fabric.findMany({
+  orderBy: { name: 'asc' }
+})
+
   
   // 🟢 Fonction utilitaire pour garder les filtres croisés quand on clique sur un onglet
   const buildUrl = (targetView?: string, targetType?: string) => {
