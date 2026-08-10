@@ -46,17 +46,17 @@ export async function advanceProductionStep(itemId: string, currentStep: string,
   revalidatePath('/dashboard')
 }
 
-// 1. VALIDER LA COUPE (Sans lancer le chrono de couture automatiquement)
+// 🟢 1. MISE À JOUR DÉFINITIVE : Validation de la Coupe avec saisie manuelle séparée (Face A / Face B)
 export async function validateCuttingStep(formData: FormData) {
   const itemId = formData.get('itemId') as string
-  const realMetersRaw = formData.get('realMeters') as string
+  const realMetersRawA = formData.get('realMetersA') as string // 🎯 Champ pour Tissu A
+  const realMetersRawB = formData.get('realMetersB') as string // 🎯 Champ pour Tissu B
   const isChuteString = formData.get('isChute') as string
 
   if (!itemId) return
 
-  const realMeters = realMetersRaw 
-    ? parseFloat(realMetersRaw.replace(',', '.')) 
-    : undefined
+  const realMetersA = realMetersRawA ? parseFloat(realMetersRawA.replace(',', '.')) : undefined
+  const realMetersB = realMetersRawB ? parseFloat(realMetersRawB.replace(',', '.')) : undefined
 
   const useChute = isChuteString === 'true'
 
@@ -71,75 +71,74 @@ export async function validateCuttingStep(formData: FormData) {
 
     await prisma.$transaction(async (tx) => {
       
+      const finalMetersA = realMetersA !== undefined && !isNaN(realMetersA) ? realMetersA : (item.quantityMeters || 0)
+      const finalMetersB = realMetersB !== undefined && !isNaN(realMetersB) ? realMetersB : (item.quantityMetersB || 0)
+      
+      // Mise à jour de l'article pour le passer en couture et enregistrer les VRAIS métrages
       let dataUpdate: any = {
         statusProduction: 'EN_COUTURE',
-        // 🎯 RETIRÉ : startedCoutureAt n'est plus mis à jour ici ! Le chrono reste à null.
-        isChute: useChute
+        isChute: useChute,
+        quantityMeters: finalMetersA
       }
 
-      const finalMetersCut = realMeters !== undefined && !isNaN(realMeters) ? realMeters : (item.quantityMeters || 0)
-      dataUpdate.quantityMeters = finalMetersCut
+      if (item.fabricBId) {
+        dataUpdate.quantityMetersB = finalMetersB 
+      }
 
       await tx.quoteItem.update({
         where: { id: itemId },
         data: dataUpdate
       })
 
-      if (!useChute && item.fabricId && finalMetersCut > 0 && item.quantityUnits) {
-        const totalUnitsToMake = item.quantityUnits
-        const unitMeters = finalMetersCut / totalUnitsToMake 
-
-        let unitsRemaining = totalUnitsToMake
-        let currentLotIndex = 0
-
-        const activeLots = await tx.fabricLot.findMany({
-          where: { fabricId: item.fabricId, location: 'ATELIER', quantityLeft: { gt: 0 } },
-          orderBy: { createdAt: 'asc' }
-        })
-
-        while (unitsRemaining > 0 && currentLotIndex < activeLots.length) {
-          const lot = activeLots[currentLotIndex]
-          const possibleUnitsInThisLot = Math.floor(lot.quantityLeft / unitMeters)
-
-          if (possibleUnitsInThisLot > 0) {
-            const unitsToCut = Math.min(possibleUnitsInThisLot, unitsRemaining)
-            const metersToDeduct = unitsToCut * unitMeters
-
-            await tx.fabricLot.update({
-              where: { id: lot.id },
-              data: { quantityLeft: { decrement: metersToDeduct } }
-            })
-
-            lot.quantityLeft -= metersToDeduct
-            unitsRemaining -= unitsToCut
-          }
-
-          if (unitsRemaining > 0) {
-            currentLotIndex++
-          }
-        }
-
-        if (unitsRemaining > 0 && activeLots.length > 0) {
-          const emergencyMeters = unitsRemaining * unitMeters
-          await tx.fabricLot.update({
-            where: { id: activeLots[0].id },
-            data: { quantityLeft: { decrement: emergencyMeters } }
+      // ✂️ GESTION DU STOCK POUR LES DEUX ROULEAUX SÉPARÉMENT
+      if (!useChute) {
+        
+        // --- 🧵 TISSU A (Principal) ---
+        if (item.fabricId && finalMetersA > 0) {
+          await tx.fabric.update({
+            where: { id: item.fabricId },
+            data: { stockMeters: { decrement: finalMetersA } }
+          })
+          
+          await tx.stockMovement.create({
+            data: { 
+              fabricId: item.fabricId, 
+              type: "EXIT", 
+              quantityMeters: finalMetersA, 
+              reason: `Coupe Rouleau Face A - Cmd ${item.quote.reference}` 
+            }
           })
         }
 
-        await tx.stockMovement.create({
-          data: { fabricId: item.fabricId, type: "EXIT", quantityMeters: finalMetersCut, reason: `Coupe Rouleau - Commande ${item.quote.reference}` }
-        })
+        // --- 🧵 TISSU B (Secondaire) ---
+        if (item.fabricBId && finalMetersB > 0) {
+          await tx.fabric.update({
+            where: { id: item.fabricBId },
+            data: { stockMeters: { decrement: finalMetersB } }
+          })
+          
+          await tx.stockMovement.create({
+            data: { 
+              fabricId: item.fabricBId, 
+              type: "EXIT", 
+              quantityMeters: finalMetersB, 
+              reason: `Coupe Rouleau Face B - Cmd ${item.quote.reference}` 
+            }
+          })
+        }
 
-        await tx.fabric.update({
-          where: { id: item.fabricId },
-          data: { stockMeters: { decrement: finalMetersCut } }
-        })
-
-      } else if (useChute && item.fabricId) {
-        await tx.stockMovement.create({
-          data: { fabricId: item.fabricId, type: "EXIT", quantityMeters: finalMetersCut, reason: `Coupe CHUTE (Stock préservé) - Commande ${item.quote.reference}` }
-        })
+      } else if (useChute) {
+        // En cas de chute, on trace juste la conso mais on ne touche pas au stock principal
+        if (item.fabricId && finalMetersA > 0) {
+          await tx.stockMovement.create({
+            data: { fabricId: item.fabricId, type: "EXIT", quantityMeters: finalMetersA, reason: `Coupe CHUTE Face A - Cmd ${item.quote.reference}` }
+          })
+        }
+        if (item.fabricBId && finalMetersB > 0) {
+          await tx.stockMovement.create({
+            data: { fabricId: item.fabricBId, type: "EXIT", quantityMeters: finalMetersB, reason: `Coupe CHUTE Face B - Cmd ${item.quote.reference}` }
+          })
+        }
       }
     })
 
@@ -150,6 +149,7 @@ export async function validateCuttingStep(formData: FormData) {
     console.error('Erreur lors du traitement de la coupe atelier :', error)
   }
 }
+
 
 // 2. 🆕 NOUVELLE ACTION : Déclenchement manuel du chrono de couture par l'artisan
 export async function startSewingStep(formData: FormData) {
@@ -252,31 +252,57 @@ export async function validateBulkCuttingStep(formData: FormData) {
   const itemIds = formData.getAll('itemIds') as string[]
 
   try {
-    // 1. On récupère toutes les pièces sélectionnées
     const items = await prisma.quoteItem.findMany({
-      where: { id: { in: itemIds } }
+      where: { id: { in: itemIds } },
+      include: { quote: true } // On inclut la quote pour avoir la référence dans l'historique
     })
 
-    // 2. On calcule le métrage global consommé et on identifie le tissu
-    const fabricId = items[0]?.fabricId
-    const totalMeters = items.reduce((sum, item) => sum + (Number(item.quantityMeters) || 0), 0)
+    await prisma.$transaction(async (tx) => {
+      // 1. On boucle sur chaque article pour déduire les BONS rouleaux
+      for (const item of items) {
+        const meters = Number(item.quantityMeters) || 0
+        const metersB = Number((item as any).quantityMetersB) || 0
 
-    // 3. Bim Bam Boum : On déduit tout le lot d'un seul coup du rouleau
-    if (fabricId && totalMeters > 0) {
-      await prisma.fabric.update({
-        where: { id: fabricId },
+        // 🧵 Déduction Face A
+        if (item.fabricId && meters > 0) {
+          await tx.fabric.update({
+            where: { id: item.fabricId },
+            data: { stockMeters: { decrement: meters } }
+          })
+          await tx.stockMovement.create({
+            data: {
+              fabricId: item.fabricId,
+              type: "EXIT",
+              quantityMeters: meters,
+              reason: `Multi-Coupe (Groupée) - Cmd ${item.quote?.reference || item.quoteId}`
+            }
+          })
+        }
+
+        // 🧵 Déduction Face B (si l'article est bicolore)
+        if (item.fabricBId && metersB > 0) {
+          await tx.fabric.update({
+            where: { id: item.fabricBId },
+            data: { stockMeters: { decrement: metersB } }
+          })
+          await tx.stockMovement.create({
+            data: {
+              fabricId: item.fabricBId,
+              type: "EXIT",
+              quantityMeters: metersB,
+              reason: `Multi-Coupe Face B (Groupée) - Cmd ${item.quote?.reference || item.quoteId}`
+            }
+          })
+        }
+      }
+
+      // 2. On bascule toutes les fiches d'un coup en couture
+      await tx.quoteItem.updateMany({
+        where: { id: { in: itemIds } },
         data: {
-          stockMeters: { decrement: totalMeters }
+          statusProduction: 'EN_COUTURE'
         }
       })
-    }
-
-    // 4. On bascule toutes les fiches d'un coup en couture
-    await prisma.quoteItem.updateMany({
-      where: { id: { in: itemIds } },
-      data: {
-        statusProduction: 'EN_COUTURE'
-      }
     })
 
     revalidatePath('/atelier')
@@ -319,19 +345,24 @@ export async function shipBulkOrder(formData: FormData) {
   }
 }
 
+// 🟢 2. MISE À JOUR : Liaison des tissus (Accepte la Face B)
 export async function linkFabricToItem(formData: FormData) {
   const itemId = formData.get('itemId') as string
   const fabricId = formData.get('fabricId') as string
+  const fabricBId = formData.get('fabricBId') as string // 🔄 Captation du second tissu
 
-  if (!itemId || !fabricId) return
+  if (!itemId) return
 
   try {
+    let dataToUpdate: any = {}
+    if (fabricId) dataToUpdate.fabricId = fabricId
+    if (fabricBId) dataToUpdate.fabricBId = fabricBId
+
     await prisma.quoteItem.update({
       where: { id: itemId },
-      data: { fabricId: fabricId }
+      data: dataToUpdate
     })
     
-    // Rafraîchit la page pour afficher le nouveau tissu et réorganiser les groupes
     revalidatePath('/atelier') 
   } catch (error) {
     console.error("Erreur lors de la liaison du tissu :", error)

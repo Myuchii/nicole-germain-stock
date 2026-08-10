@@ -162,7 +162,7 @@ export default function StockPage() {
           {/* 🎯 INTÉGRATION PARFAITE DU NOUVEAU BOUTON D'ASPIRATION */}
           <SyncFabricsButton />
 
-          <Link href="/stock/add">
+          <Link href="/stock-atelier/add">
             <button className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-indigo-600 transition-all shadow-lg text-sm">
               <Plus size={18} /> Nouveau Référencement
             </button>

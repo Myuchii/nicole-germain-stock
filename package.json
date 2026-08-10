@@ -2,15 +2,16 @@
   "name": "nicole-germain-stock",
   "version": "0.1.0",
   "private": true,
-  "prisma": {
-    "schema": "src/prisma/schema.prisma"
+"prisma": {
+    "schema": "src/prisma/schema.prisma",
+    "seed": "tsx src/prisma/seed.ts"
   },
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "db:seed-catalog": "ts-node prisma/seed-catalog.ts",
+    "db:seed-catalog": "tsx prisma/seed-catalog.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -47,6 +48,8 @@
     "eslint-config-next": "16.2.6",
     "prisma": "^6.19.3",
     "tailwindcss": "^4",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.12",
     "typescript": "^5.9.3"
   }
 }

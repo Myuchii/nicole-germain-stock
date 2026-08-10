@@ -90,11 +90,13 @@ model Fabric {
 
   stockMovements        StockMovement[]
   quotes                Quote[]
-  quoteItems            QuoteItem[]
   lots                  FabricLot[]     // 🆕 Lots de tissus (valeur absolue)
+  
+  // 🟢 NOUVEAU : Double liaison avec QuoteItem pour Face A et Face B
+  quoteItemsA           QuoteItem[] @relation("FabricA")
+  quoteItemsB           QuoteItem[] @relation("FabricB")
 }
 
-// 🆕 NOUVEAU : Lots pour le calcul de la valeur absolue des Tissus
 model FabricLot {
   id               String       @id @default(cuid())
   fabricId         String
@@ -107,7 +109,6 @@ model FabricLot {
   fabric           Fabric       @relation(fields: [fabricId], references: [id], onDelete: Cascade)
 }
 
-// 🆕 NOUVEAU : Table pour les Accessoires (Fils, Zips, Boutons...)
 model Accessory {
   id               String         @id @default(cuid())
   reference        String         @unique
@@ -141,7 +142,7 @@ model StockMovement {
   id               String       @id @default(cuid())
   fabricId         String
   type             MovementType 
-  quantityMeters   Float?        
+  quantityMeters   Float?       
   quantityUnits    Int?
   reason           String
   purchasePriceHT  Float        @default(0) 
@@ -164,28 +165,23 @@ model Client {
   zipCode   String?  
   city      String?  
   country   String?  @default("France") 
-  source    ClientSource @default(DIRECT_ATELIER) // 🆕 Ajout du tag de provenance
+  source    ClientSource @default(DIRECT_ATELIER)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
   quotes    Quote[]  
 }
-// ==========================================================
-// 🆕 AJOUT : GESTION DES PARTENAIRES B2B (Ex: Matelas-camping-car.com)
-// ==========================================================
+
 model Partner {
   id        String   @id @default(cuid())
-  name      String   // Ex: "Matelas Camping-car"
+  name      String   
   email     String   @unique
   phone     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  quotes    Quote[]  // Toutes les commandes passées par ce partenaire
+  quotes    Quote[]  
 }
 
-// ==========================================================
-// 🔄 MODIFICATION : AJOUT DU LIEN PARTENAIRE SUR LE QUOTE (DEVIS/COMMANDE)
-// ==========================================================
 model Quote {
   id            String        @id @default(cuid())
   reference     String        @unique @default(cuid())
@@ -211,14 +207,9 @@ model Quote {
   items         QuoteItem[]
   isPaid        Boolean       @default(false)
 
-  // 🆕 Relation Partenaire : Optionnelle pour ne pas casser tes commandes boutique
   partnerId     String?
   partner       Partner?      @relation(fields: [partnerId], references: [id], onDelete: SetNull)
 }
-
-// ==========================================================
-// 🔄 MODIFICATION : LES CÔTES SUR-MESURE ET LE SCHÉMA SUR L'ARTICLE
-// ==========================================================
 
 enum ClientSource {
   WEB_VOSGIA
@@ -235,14 +226,12 @@ enum PaymentStatus {
 model QuoteItem {
   id               String    @id @default(cuid())
   quoteId          String
-  fabricId         String?   
   accessoryId      String?   
   
-  customName       String?   // Ex: "Sur-matelas - Fibres Creuses 600 gr"
-  customMargin     String?   // Rétabli en String/Float selon tes besoins
+  customName       String?   
+  customMargin     String?   
   customPriceHT    Float?    
 
-  quantityMeters   Float?    
   quantityUnits    Int?
   prodTimeMinutes  Int
   costPerMinute    Float     
@@ -254,20 +243,25 @@ model QuoteItem {
   isChute          Boolean   @default(false)      
   discountPercent  Float     @default(0.0)        
 
-  // 🆕 1. LES CÔTES TECHNIQUES CAMPING-CAR (A, B, C, D, E...)
-  // Optionnelles pour que tes draps housses classiques continuent de fonctionner
-  coteA            Float?    // Longueur totale / Côte A
-  coteB            Float?    // Largeur totale / Côte B
-  coteC            Float?    // Pan coupé gauche / Côte C
-  coteD            Float?    // Pan coupé droit / Côte D
-  coteE            Float?    // Décroché / Côte E
+  coteA            Float?    
+  coteB            Float?    
+  coteC            Float?    
+  coteD            Float?    
+  coteE            Float?    
   bonnet           Int       @default(0)
+  blueprintUrl     String?   
 
-  // 🆕 2. LA PIÈCE JOINTE DU SCHÉMA TECHNIQUE (URL Stockée sur S3 / Uploadthing)
-  blueprintUrl     String?   // Lien vers l'image du plan pour Jade à la coupe
+  // 🟢 NOUVEAU : Tissu Principal (Face A)
+  fabricId         String?   
+  fabric           Fabric?   @relation("FabricA", fields: [fabricId], references: [id]) 
+  quantityMeters   Float?    
+  
+  // 🟢 NOUVEAU : Tissu Secondaire (Face B)
+  fabricBId        String?
+  fabricB          Fabric?   @relation("FabricB", fields: [fabricBId], references: [id])
+  quantityMetersB  Float?
 
   quote            Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  fabric           Fabric?   @relation(fields: [fabricId], references: [id]) 
   accessory        Accessory? @relation(fields: [accessoryId], references: [id]) 
 }
 
@@ -285,7 +279,7 @@ model FinishedProduct {
   alertThreshold  Int      @default(5)     
   sellingPriceHT  Float    
   createdAt       DateTime @default(now())
-  location             ItemLocation    @default(BOUTIQUE)
+  location        ItemLocation    @default(BOUTIQUE)
   updatedAt       DateTime @updatedAt
 
   lots FinishedProductLot[]
@@ -294,10 +288,10 @@ model FinishedProduct {
 model FinishedProductLot {
   id                   String          @id @default(cuid())
   finishedProductId    String
-  quantityManufactured Int             
-  quantityLeft         Int             
+  quantityManufactured Int              
+  quantityLeft         Int              
   sellingPriceHT       Float
-  location         ItemLocation @default(BOUTIQUE)           
+  location             ItemLocation @default(BOUTIQUE)            
   createdAt            DateTime        @default(now())
 
   finishedProduct      FinishedProduct @relation(fields: [finishedProductId], references: [id], onDelete: Cascade)
@@ -330,21 +324,21 @@ model MerchandiseLot {
 }
 
 model SaleLog {
-  id             String   @id @default(cuid())
-  referenceItem  String
-  name           String
-  type           String
-  quantitySold   Int
-  unitPriceHT      Float?   @default(0) // 🆕 Le prix unitaire de base
-  discountPercent  Float?   @default(0) // 🆕 La remise appliquée sur ce ticket
-  totalPriceHT   Float
-  paymentMethod  String
-  taxRate        Float    @default(20.0)  // 🆕 TVA applicable sur le ticket
-  isTaxExempt    Boolean  @default(false) // 🆕 Vente sans TVA
-  isTTC          Boolean  @default(false) 
-  totalPriceTTC  Float    @default(0)      
-  ticketId       String?
-  createdAt      DateTime @default(now())
+  id               String   @id @default(cuid())
+  referenceItem    String
+  name             String
+  type             String
+  quantitySold     Int
+  unitPriceHT      Float?   @default(0) 
+  discountPercent  Float?   @default(0) 
+  totalPriceHT     Float
+  paymentMethod    String
+  taxRate          Float    @default(20.0)  
+  isTaxExempt      Boolean  @default(false) 
+  isTTC            Boolean  @default(false) 
+  totalPriceTTC    Float    @default(0)     
+  ticketId         String?
+  createdAt        DateTime @default(now())
 }
 
 // ==========================================
@@ -352,17 +346,17 @@ model SaleLog {
 // ==========================================
 
 model Range {
-  id            String   @id @default(cuid())
-  name          String   
-  isBicolor     Boolean  @default(false)
-  pricePremium  Float    @default(0) 
+  id              String   @id @default(cuid())
+  name            String   
+  isBicolor       Boolean  @default(false)
+  pricePremium    Float    @default(0) 
 }
 
 model ProductType {
-  id            String   @id @default(cuid())
-  name          String   
-  family        String   
-  baseLaborTime Int      
+  id              String   @id @default(cuid())
+  name            String   
+  family          String   
+  baseLaborTime   Int      
 }
 
 model AtelierSettings {
@@ -422,12 +416,12 @@ model VerificationToken {
 
 model SupplierCatalogItem {
   id              String   @id @default(uuid())
-  supplierName    String   // Ex: 'FILTES FILATI TESSUTI', 'CAMILLTEX'...
+  supplierName    String   
   reference       String
-  color           String?  // Devient la Couleur Fournisseur brute
-  ngColor         String?  // 🎨 🆕 La correspondance Couleur NG (Jade)
+  color           String?  
+  ngColor         String?  
   designation     String?
-  purchasePriceHT Float    // Issu de la colonne 'PRIX HT AU METRE'
+  purchasePriceHT Float    
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
