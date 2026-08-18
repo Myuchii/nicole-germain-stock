@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Plus, Search, Download, AlertTriangle, Trash2, Scissors, Layers, Paperclip, Palette } from 'lucide-react'
-import { deleteFabric, deleteAccessory, getFabrics, getAccessories, getAbsoluteStockValue } from '@/app/_actions/fabric-actions'
+import { deleteFabric, deleteAccessory, getFabrics, getAccessories, getAbsoluteStockValue, adjustStockManually } from '@/app/_actions/fabric-actions'
 import { syncAllPrestashopFabrics } from '@/app/_actions/prestashop-actions'
 import Link from 'next/link'
 import LocationSwitch from '@/components/LocationSwitch'
@@ -281,6 +281,31 @@ export default function StockPage() {
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center justify-end gap-1">
+                          {/* 🟢 BOUTON RETRAIT EXCEPTIONNEL (TISSUS) */}
+                          <form action={async (formData) => {
+                            const qty = prompt(`Combien de ${f.unit === 'METER' ? 'mètres' : 'pièces'} veux-tu retirer du stock ?\n(Utilise un point pour les décimales, ex: 1.5)`)
+                            if (!qty) return
+                            
+                            const reason = prompt("Pour quelle raison ?\n(ex: Défaut tissu, test machine, jeté...)")
+                            if (!reason) return
+
+                            formData.append('quantity', qty)
+                            formData.append('reason', reason)
+                            formData.append('itemId', f.id)
+                            formData.append('itemType', 'FABRIC') 
+
+                            const res = await adjustStockManually(formData)
+                            if (!res?.success) alert(res?.error)
+                          }} className="inline-block">
+                            <button 
+                              type="submit"
+                              title="Retrait exceptionnel / Ajustement"
+                              className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                            >
+                              ✂️
+                            </button>
+                          </form>
+
                           <button 
                             onClick={async () => {
                               if (confirm("Voulez-vous supprimer ce tissu ?")) {
@@ -363,6 +388,31 @@ export default function StockPage() {
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          {/* 🟢 BOUTON RETRAIT EXCEPTIONNEL (ACCESSOIRES) */}
+                          <form action={async (formData) => {
+                            const qty = prompt("Combien de pièces veux-tu retirer du stock ?")
+                            if (!qty) return
+                            
+                            const reason = prompt("Pour quelle raison ?\n(ex: Défaut, cassé, perdu...)")
+                            if (!reason) return
+
+                            formData.append('quantity', qty)
+                            formData.append('reason', reason)
+                            formData.append('itemId', a.id)
+                            formData.append('itemType', 'ACCESSORY') // 👈 On précise bien que c'est de la mercerie
+
+                            const res = await adjustStockManually(formData)
+                            if (!res?.success) alert(res?.error)
+                          }} className="inline-block">
+                            <button 
+                              type="submit"
+                              title="Retrait exceptionnel / Ajustement"
+                              className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                            >
+                              ✂️
+                            </button>
+                          </form>
+
                           <button 
                             onClick={async () => {
                               if (confirm("Voulez-vous supprimer cet accessoire ?")) {

@@ -16,7 +16,11 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
     where: { id: id },
     include: {
       quotes: {
-        orderBy: { createdAt: 'desc' }, 
+        // 🟢 On trie par la VRAIE date de commande, et on garde createdAt en plan B au cas où
+        orderBy: [
+          { validatedAt: 'desc' },
+          { createdAt: 'desc' }
+        ], 
         include: { 
           fabric: true,
           items: true 

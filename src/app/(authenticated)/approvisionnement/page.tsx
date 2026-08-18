@@ -261,6 +261,8 @@ export default function ApprovisionnementPage() {
               {itemsToOrder
                 .filter(i => i.source === activeTab)
                 .filter(i => !search || i.reference.toLowerCase().includes(search.toLowerCase()) || i.name.toLowerCase().includes(search.toLowerCase()) || i.color.toLowerCase().includes(search.toLowerCase()) || i.ngColor.toLowerCase().includes(search.toLowerCase()))
+                // 🟢 On trie toujours par ordre alphabétique sur la désignation (Matière)
+                .sort((a, b) => a.name.localeCompare(b.name))
                 .map(item => (
                   <tr 
                     key={item.id} 

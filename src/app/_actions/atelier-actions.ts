@@ -14,36 +14,56 @@ export async function startCoutureChrono(itemId: string) {
   })
   revalidatePath('/atelier')
 }
-// 2. Avancer les étapes générales
 export async function advanceProductionStep(itemId: string, currentStep: string, realMeters?: number) {
   let nextStep = 'A_COUPER'
   let dataUpdate: any = {}
   
   if (currentStep === 'A_COUPER') {
     nextStep = 'EN_COUTURE'
-    // 🪓 Nettoyage : On n'active plus le chrono couture automatiquement ici !
     if (realMeters !== undefined) {
       dataUpdate.quantityMeters = realMeters
     }
   } 
   else if (currentStep === 'EN_COUTURE') {
     nextStep = 'PRET'
-    dataUpdate.finishedAt = new Date() // Le chrono s'arrête définitivement ici
+    dataUpdate.finishedAt = new Date() 
   } 
   else if (currentStep === 'PRET') {
     nextStep = 'EXPEDIE'
   }
 
-  await prisma.quoteItem.update({
+  // 1. On met à jour l'article et on récupère son quoteId
+  const updatedItem = await prisma.quoteItem.update({
     where: { id: itemId },
     data: { 
       statusProduction: nextStep,
       ...dataUpdate
-    }
+    },
+    include: { quote: true } // 👈 On a besoin des infos de la commande parente
   })
+
+  // 🟢 2. LA MAGIE DE L'ARCHIVAGE AUTO
+  if (nextStep === 'EXPEDIE') {
+    // On compte combien d'articles de cette commande ne sont PAS encore expédiés
+    const pendingItemsCount = await prisma.quoteItem.count({
+      where: {
+        quoteId: updatedItem.quoteId,
+        statusProduction: { not: 'EXPEDIE' } // Tout ce qui est encore en coupe, couture, ou prêt
+      }
+    })
+
+    // Si le compteur est à 0, ça veut dire que c'était le dernier article ! On archive.
+    if (pendingItemsCount === 0) {
+      await prisma.quote.update({
+        where: { id: updatedItem.quoteId },
+        data: { status: 'ARCHIVED' }
+      })
+    }
+  }
 
   revalidatePath('/atelier')
   revalidatePath('/dashboard')
+  revalidatePath('/expedition') // Optionnel si tu as une page dédiée
 }
 
 // 🟢 1. MISE À JOUR DÉFINITIVE : Validation de la Coupe avec saisie manuelle séparée (Face A / Face B)

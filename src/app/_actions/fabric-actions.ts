@@ -304,3 +304,51 @@ export async function changeLotLocation(
     return { success: false, error: "Impossible de changer la localisation." }
   }
 }
+
+// 🟢 AJUSTEMENT EXCEPTIONNEL DE STOCK
+export async function adjustStockManually(formData: FormData) {
+  const itemId = formData.get('itemId') as string
+  const type = formData.get('itemType') as 'FABRIC' | 'ACCESSORY'
+  const quantity = parseFloat(formData.get('quantity') as string)
+  const reason = formData.get('reason') as string
+
+  if (!itemId || isNaN(quantity) || quantity <= 0) {
+    return { success: false, error: "Quantité invalide." }
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (type === 'FABRIC') {
+        // 1. On déduit du rouleau principal
+        await tx.fabric.update({
+          where: { id: itemId },
+          data: { stockMeters: { decrement: quantity } }
+        })
+        
+        // 2. On trace le mouvement !
+        await tx.stockMovement.create({
+          data: {
+            fabricId: itemId,
+            type: "EXIT",
+            quantityMeters: quantity,
+            reason: `Ajustement exceptionnel : ${reason}`
+          }
+        })
+      } else {
+        // Idem pour les accessoires (mercerie)
+        await tx.accessory.update({
+          where: { id: itemId },
+          data: { stockQuantity: { decrement: quantity } }
+        })
+        
+        // Si tu as une table de traçabilité pour les accessoires, on l'ajoute ici !
+      }
+    })
+
+    revalidatePath('/stock')
+    return { success: true }
+  } catch (error) {
+    console.error("Erreur lors de l'ajustement du stock:", error)
+    return { success: false, error: "Impossible de modifier le stock." }
+  }
+}

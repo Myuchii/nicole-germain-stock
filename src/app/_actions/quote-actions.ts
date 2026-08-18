@@ -520,3 +520,24 @@ export async function processCustomerReturn(quoteId: string, reason: string, act
     return { success: false, error: "Impossible de traiter." }
   }
 }
+
+// 🟢 ACTION : CHIFFRER UNE COMMANDE
+export async function updateOrderPrice(quoteId: string, newPriceHT: number) {
+  try {
+    await prisma.quote.update({
+      where: { id: quoteId },
+      data: { totalPrice: newPriceHT }
+    })
+
+    await prisma.quoteItem.updateMany({
+      where: { quoteId: quoteId },
+      data: { sellingPrice: newPriceHT }
+    })
+
+    revalidatePath('/commandes') // ou le chemin de ta page de commandes
+    return { success: true }
+  } catch (error) {
+    console.error("Erreur lors du chiffrage :", error)
+    return { success: false, error: "Impossible de mettre à jour le prix." }
+  }
+}

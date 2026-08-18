@@ -162,12 +162,28 @@ export default async function PartnerDashboardPage() {
                             const files = JSON.parse(quote.items[0].blueprintUrl)
                             if (files.doc || files.schema) {
                               return (
-                                <div className="flex flex-col gap-1.5 items-center">
-                                  {files.doc && (
-                                    <a href={`/api/documents?url=${files.doc}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-md text-[10px] font-bold border border-indigo-200/50 transition-colors w-full justify-center">📄 Le Bon</a>
+<div className="flex flex-col gap-1.5 items-center w-full">
+                                  {/* 🟢 Boucle sur les multiples bons Word/PDF */}
+                                  {files.docs && files.docs.length > 0 ? (
+                                    files.docs.map((url: string, index: number) => (
+                                      <a key={index} href={`/api/documents?url=${url}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-md text-[10px] font-bold border border-indigo-200/50 transition-colors w-full justify-center whitespace-nowrap shadow-sm">
+                                        📄 Bon {files.docs.length > 1 ? `#${index + 1}` : ''}
+                                      </a>
+                                    ))
+                                  ) : (
+                                    /* 🟢 Fallback pour les commandes historiques avec un seul "doc" */
+                                    files.doc && (
+                                      <a href={`/api/documents?url=${files.doc}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-md text-[10px] font-bold border border-indigo-200/50 transition-colors w-full justify-center whitespace-nowrap shadow-sm">
+                                        📄 Le Bon
+                                      </a>
+                                    )
                                   )}
+                                  
+                                  {/* 🟢 Le Schéma (unique) */}
                                   {files.schema && (
-                                    <a href={`/api/documents?url=${files.schema}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-md text-[10px] font-bold border border-emerald-200/50 transition-colors w-full justify-center">📐 Schéma</a>
+                                    <a href={`/api/documents?url=${files.schema}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-md text-[10px] font-bold border border-emerald-200/50 transition-colors w-full justify-center whitespace-nowrap shadow-sm">
+                                      📐 Schéma
+                                    </a>
                                   )}
                                 </div>
                               )

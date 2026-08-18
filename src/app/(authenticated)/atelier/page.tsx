@@ -61,7 +61,7 @@ function parsePrestashopProductLocal(productName: string) {
     subFamilyLabel = 'Traversin'
   }
 
-  let L = 200, l = 160, bonnet = 0, diametre = 210, grammage = 0
+  let L = 0, l = 0, bonnet = 0, diametre = 0, grammage = 0
   let dualColorsLabel = ''
 
   // 🎨 EXTRACTION DES COULEURS BICOLORES OU VOLANTS DIFFÉRENTS
@@ -205,10 +205,6 @@ items.filter(i => i.statusProduction === 'A_COUPER').forEach(item => {
     if (groupBy === 'color') {
       // 🎨 Mode Couleur : On sépare par Rouleau de Tissu + Dimension
       uniqueGroupKey = `${fabricKey}-${matchedProduct.family}-${baseDimKey}`
-    } else if (groupBy === 'bonnet') {
-      // 🪡 Mode Bonnet : On regroupe UNIQUEMENT par Bonnet (peu importe la largeur/longueur ou le tissu)
-      uniqueGroupKey = `${matchedProduct.family}-BONNET-${matchedProduct.dims.bonnet}`
-      finalDimsStr = `Toutes dimensions — Bonnet de ${matchedProduct.dims.bonnet} cm`
     } else {
       // 📏 Mode Dimension (Par défaut) : Matelassage (on groupe par taille, on ignore le tissu)
       uniqueGroupKey = `${matchedProduct.family}-${baseDimKey}`
@@ -367,7 +363,6 @@ items.filter(i => i.statusProduction === 'A_COUPER').forEach(item => {
                 <span className="text-[9px] font-black text-slate-400 uppercase ml-2 mr-1">Grouper :</span>
                 <Link href={buildUrl(view, type, 'dimensions')} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${groupBy === 'dimensions' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>📏 Dim.</Link>
                 <Link href={buildUrl(view, type, 'color')} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${groupBy === 'color' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>🎨 Coul.</Link>
-                <Link href={buildUrl(view, type, 'bonnet')} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${groupBy === 'bonnet' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>🪡 Bonnet</Link>
               </div>
             </div>
             
@@ -482,20 +477,34 @@ items.filter(i => i.statusProduction === 'A_COUPER').forEach(item => {
                             <form action={validateCuttingStep} className="flex flex-col gap-3 text-xs">
                               <input type="hidden" name="itemId" value={item.id} />
                               
-                              <div className="flex justify-between items-start gap-2">
+<div className="flex justify-between items-start gap-2">
                                 <div className="min-w-0 flex-1">
-                                  <span className="font-mono text-indigo-600 font-bold">{item.quote.reference}</span>
-                                  {item.customName && <p className="text-[11px] text-slate-600 font-medium mt-0.5 leading-tight break-words">{item.customName}</p>}
-                                  
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="font-mono text-indigo-600 font-bold">{item.quote.reference}</span>
+                                    <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded uppercase truncate">👤 {item.quote.client?.name || 'Client Inconnu'}</span>
+                                  </div>
+                                  {item.customName && <p className="text-[11px] text-slate-600 font-medium leading-tight break-words">{item.customName}</p>} 
+
                                   {item.blueprintUrl && (() => {
                                     try {
                                       const files = JSON.parse(item.blueprintUrl)
                                       if (files.doc || files.schema) {
                                         return (
-                                          <div className="flex items-center gap-3 mt-2">
-                                            {files.doc && (
-                                              <a href={`/api/documents?url=${files.doc}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200/50 transition-colors shadow-sm">📄 Voir le Bon</a>
+<div className="flex flex-wrap items-center gap-2 mt-2">
+                                            {/* 🟢 S'il y a le nouveau tableau "docs", on boucle dessus */}
+                                            {files.docs && files.docs.length > 0 ? (
+                                              files.docs.map((url: string, index: number) => (
+                                                <a key={index} href={`/api/documents?url=${url}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200/50 transition-colors shadow-sm">
+                                                  📄 Bon {files.docs.length > 1 ? `#${index + 1}` : ''}
+                                                </a>
+                                              ))
+                                            ) : (
+                                              /* 🟢 Fallback pour les anciennes commandes qui n'ont que "doc" */
+                                              files.doc && (
+                                                <a href={`/api/documents?url=${files.doc}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200/50 transition-colors shadow-sm">📄 Voir le Bon</a>
+                                              )
                                             )}
+                                            
                                             {files.schema && (
                                               <a href={`/api/documents?url=${files.schema}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold border border-emerald-200/50 transition-colors shadow-sm">📐 Voir le Schéma</a>
                                             )}
@@ -523,10 +532,10 @@ items.filter(i => i.statusProduction === 'A_COUPER').forEach(item => {
                                     ) : (
                                       <span className="text-slate-400 text-[10px] uppercase font-bold">Métrage réel :</span>
                                     )}
-                                    <input type="number" name="realMetersA" step="0.1" defaultValue={Number(item.quantityMeters).toFixed(1)} className="w-16 p-1 text-center bg-white border border-slate-200 rounded-lg font-black text-indigo-600 outline-none" />
+                                    <input type="number" name="realMetersA" step="0.05" defaultValue={Number(item.quantityMeters).toFixed(2)} className="w-20 p-1 text-center bg-white border border-slate-200 rounded-lg font-black text-indigo-600 outline-none" />
                                     <span className="text-slate-400 font-bold">m</span>
                                   </div>
-                                  
+
                                   {!isBicolor && (
                                     <div className="flex gap-1.5">
                                       <button type="submit" name="isChute" value="false" className="py-1.5 px-3 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-[10px] font-bold transition-colors whitespace-nowrap">✂️ Rouleau</button>
@@ -539,7 +548,7 @@ items.filter(i => i.statusProduction === 'A_COUPER').forEach(item => {
                                   <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-100/50">
                                     <div className="flex items-center gap-2">
                                       <span className="text-amber-500 text-[10px] uppercase font-bold w-12 text-right">Face B :</span>
-                                      <input type="number" name="realMetersB" step="0.1" defaultValue={(item as any).quantityMetersB ? Number((item as any).quantityMetersB).toFixed(1) : ''} placeholder="0.0" className="w-16 p-1 text-center bg-amber-50/30 border border-amber-200 rounded-lg font-black text-amber-600 outline-none" />
+                                      <input type="number" name="realMetersB" step="0.05" defaultValue={(item as any).quantityMetersB ? Number((item as any).quantityMetersB).toFixed(2) : ''} placeholder="0.0" className="w-16 p-1 text-center bg-amber-50/30 border border-amber-200 rounded-lg font-black text-amber-600 outline-none" />
                                       <span className="text-slate-400 font-bold">m</span>
                                     </div>
                                     
