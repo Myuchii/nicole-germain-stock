@@ -7,6 +7,14 @@ import { createClientQuick } from '@/app/_actions/client-actions'
 import { generateQuotePDF } from '@/lib/pdf-generator'
 import { Calculator, Save, Ruler, Layers, Plus, Trash2, Download, UserPlus, Check } from 'lucide-react'
 
+// 🟢 Ajout de l'interface Accessory
+interface Accessory {
+  id: string
+  name: string
+  category: string
+  pricePerUnit: number
+}
+
 interface Fabric {
   id: string
   reference: string
@@ -20,13 +28,18 @@ interface Product {
   family: string
   range: string
   fabricId: string
-  dims: { L: number; l: number; bonnet: number; diametre: number }
+  dims: { L: number; l: number; epaisseur: number; diametre: number }
   isChute: boolean
   quantity: number 
   customName?: string
   customPriceHT?: number
   customLaborMinutes?: number
   customFabricMeters?: number
+  // 🟢 Ajout des champs pour mémoriser les choix de mercerie
+  threadId?: string
+  biasId?: string
+  elasticId?: string
+  zipperId?: string
 }
 
 interface Client {
@@ -44,6 +57,7 @@ interface Client {
 interface UniversalConfiguratorProps {
   fabrics: Fabric[]
   clients: Client[]
+  accessories?: Accessory[] // 🟢 On dit au composant qu'il a le droit de recevoir les accessoires
   settings?: any       
   productTypes?: any[] 
   initialData?: any
@@ -51,11 +65,14 @@ interface UniversalConfiguratorProps {
 
 export default function UniversalConfigurator({ 
   fabrics, 
-  clients: initialClients, 
+  clients: initialClients,
+  accessories, // 🟢 On les récupère ici
   settings,       
   productTypes,
   initialData    
 }: UniversalConfiguratorProps) {
+
+  const [brand, setBrand] = useState<'NG' | 'VOSGIA' | 'NONE'>('NG')
 
   const [products, setProducts] = useState<Product[]>([
     {
@@ -63,7 +80,7 @@ export default function UniversalConfigurator({
       family: 'FITTED',
       range: 'BASIQUE',
       fabricId: '',
-      dims: { L: 200, l: 160, bonnet: 30, diametre: 210 },
+      dims: { L: 200, l: 160, epaisseur: 20, diametre: 210 },
       isChute: false,
       quantity: 1 
     }
@@ -95,9 +112,13 @@ export default function UniversalConfigurator({
         const client = clients.find(c => c.id === initialData.clientId) || initialData.client
         if (client) setClientSearch(client.name)
       }
+      
+      if (initialData.brand) {
+        setBrand(initialData.brand)
+      }
 
       setOptions({
-        isTTC: initialData.isTTC || true,
+        isTTC: initialData.isTTC ?? true, 
         discountPercent: initialData.items?.[0]?.discountPercent || 0,
         dueDate: initialData.dueDate ? new Date(initialData.dueDate).toISOString().split('T')[0] : '',
         paymentMethod: initialData.paymentMethod || ''
@@ -111,13 +132,17 @@ export default function UniversalConfigurator({
             family: p.family || 'FITTED',
             range: p.range || 'BASIQUE',
             fabricId: p.fabricId || correspondingItem?.fabricId || '',
-            dims: p.dims || { L: 200, l: 160, bonnet: 30, diametre: 210 },
+            dims: p.dims ? { ...p.dims, epaisseur: p.dims.epaisseur || p.dims.bonnet || 20 } : { L: 200, l: 160, epaisseur: 20, diametre: 210 },
             isChute: p.isChute || false,
             quantity: p.quantity || correspondingItem?.quantityUnits || 1, 
             customName: p.customName || correspondingItem?.customName || '',
             customPriceHT: p.customPriceHT || Number(correspondingItem?.sellingPrice) || 0,
             customLaborMinutes: p.customLaborMinutes || Number(correspondingItem?.prodTimeMinutes) || 0,
             customFabricMeters: p.customFabricMeters || Number(correspondingItem?.quantityMeters) || 0,
+            threadId: p.threadId || '',
+            biasId: p.biasId || '',
+            elasticId: p.elasticId || '',
+            zipperId: p.zipperId || ''
           }
         })
         setProducts(loadedProducts)
@@ -128,7 +153,7 @@ export default function UniversalConfigurator({
             family: 'CUSTOM', 
             range: 'BASIQUE',
             fabricId: item.fabricId || '',
-            dims: { L: 200, l: 160, bonnet: 30, diametre: 210 },
+            dims: { L: 200, l: 160, epaisseur: 20, diametre: 210 },
             isChute: false,
             quantity: item.quantityUnits || 1, 
             customName: item.customName || 'Article Importé Web',
@@ -157,6 +182,20 @@ export default function UniversalConfigurator({
     const currentProductType = productTypes?.find(pt => pt.family === product.family)
     const baseLaborMinutes = currentProductType ? currentProductType.baseLaborTime : 30 
 
+    // On passe des prix par défaut pour l'affichage en temps réel. 
+    // Le vrai calcul exact avec la BDD se fait côté serveur à la sauvegarde.
+    const thread = accessories?.find(a => a.id === product.threadId)
+    const bias = accessories?.find(a => a.id === product.biasId)
+    const elastic = accessories?.find(a => a.id === product.elasticId)
+    const zipper = accessories?.find(a => a.id === product.zipperId)
+
+    const dynamicSupplyPrices = {
+      threadPerMeter: thread ? thread.pricePerUnit : 0.005,
+      biasPerMeter: bias ? bias.pricePerUnit : 0.10,
+      elasticPerMeter: elastic ? elastic.pricePerUnit : 0.20,
+      zipperPerMeter: zipper ? zipper.pricePerUnit : 6.00
+    }
+
     const baseCalculation = calculateNGProduction(
        product.family as 'FITTED' | 'ENVELOPE' | 'FLAT' | 'BOLSTER' | 'ROUND',
        product.range as 'BASIQUE' | 'MONACO' | 'TPR' | 'TR',
@@ -164,7 +203,8 @@ export default function UniversalConfigurator({
       { mainPrice: Number(fabric?.pricePerMeter || 0), laize: Number(fabric?.width || 300) },
       baseLaborMinutes,               
       settings?.laborCostPerMin || 0.35, 
-      settings?.marginRate || 2.5        
+      settings?.marginRate || 2.5,
+      dynamicSupplyPrices // 🟢 On passe les prix dynamiques au moteur front-end aussi
     )
 
     return {
@@ -191,7 +231,7 @@ export default function UniversalConfigurator({
       family: 'FITTED',
       range: 'BASIQUE',
       fabricId: '',
-      dims: { L: 200, l: 160, bonnet: 30, diametre: 210 },
+      dims: { L: 200, l: 160, epaisseur: 20, diametre: 210 },
       isChute: false,
       quantity: 1 
     }])
@@ -209,28 +249,23 @@ export default function UniversalConfigurator({
     setProducts(products.map(p => p.id === id ? { ...p, dims: newDims } : p))
   }
 
-const handleSave = async () => {
-    if (!selectedClientId) return alert("Attribue d'abord ce devis à un client !")
+  const handleSave = async () => {
     const invalidProducts = products.filter(p => p.family !== 'CUSTOM' && !p.fabricId)
     if (invalidProducts.length > 0) return alert("Choisis un tissu pour tes articles classiques !")
     
     setIsPending(true)
 
-    // 🎯 CALCUL DU COMPROMIS DU TOTAL POUR TON ACTION SERVEUR
-    // 1. On applique ou non la TVA (+20%)
     const priceWithTax = options.isTTC ? grandTotalHT * 1.20 : grandTotalHT
-    // 2. On applique la remise commerciale saisie par Jade
     const finalPriceWithDiscount = priceWithTax * (1 - (options.discountPercent || 0) / 100)
     
-    // On construit le payload en y ajoutant explicitement totalPrice
     const payload = { 
       products, 
-      clientId: selectedClientId, 
+      clientId: selectedClientId || null, 
+      brand, 
       isTTC: options.isTTC, 
       discountPercent: options.discountPercent, 
       dueDate: options.dueDate, 
       paymentMethod: options.paymentMethod,
-      // 🚀 TRANSMISSION DU PRIX CALCULÉ À TON PRISMA ACTION
       totalPrice: finalPriceWithDiscount 
     }
     
@@ -243,7 +278,7 @@ const handleSave = async () => {
         alert("Devis enregistré avec succès !")
         setClientSearch('')
         setSelectedClientId('')
-        setProducts([{ id: '1', family: 'FITTED', range: 'BASIQUE', fabricId: '', dims: { L: 200, l: 160, bonnet: 30, diametre: 210 }, isChute: false, quantity: 1 }])
+        setProducts([{ id: '1', family: 'FITTED', range: 'BASIQUE', fabricId: '', dims: { L: 200, l: 160, epaisseur: 20, diametre: 210 }, isChute: false, quantity: 1 }])
       }
     } catch (error) {
       alert("Une erreur est survenue.")
@@ -251,11 +286,11 @@ const handleSave = async () => {
     }
     setIsPending(false)
   }
+
   const filteredClients = clients.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase()))
 
   const handleDownloadPDF = async () => {
     const currentClient = clients.find(c => c.id === selectedClientId)
-    if (!currentClient) return alert("💡 Associe d'abord un client pour pouvoir éditer le PDF !")
 
     const validProducts = products.map((p, idx) => {
       const res = results[idx]
@@ -268,7 +303,7 @@ const handleSave = async () => {
           family: p.customName || 'Article sur mesure',
           range: '',
           fabric: { reference: customFabric ? customFabric.reference : '-', name: customFabric ? `Tissu: ${customFabric.name}` : 'Sans tissu fourni', pricePerMeter: customFabric ? customFabric.pricePerMeter : 0 },
-          dims: { L: 0, l: 0, bonnet: 0, diametre: 0 },
+          dims: { L: 0, l: 0, epaisseur: 0, diametre: 0 },
           mainFabricMeters: res.mainFabricMeters,
           laborMinutes: res.laborMinutes,
           totalPriceHT: rowPriceFinal, 
@@ -283,13 +318,16 @@ const handleSave = async () => {
     })
 
     const quoteData = {
-      id: `DEV-${Date.now().toString().slice(-6)}`,
-      reference: `DEV-${Date.now().toString().slice(-6)}`,
+      id: initialData?.id || `DEV-${Date.now().toString().slice(-6)}`,
+      reference: initialData?.reference || `DEV-${Date.now().toString().slice(-6)}`,
       totalPrice: options.isTTC ? grandTotalHT * 1.20 : grandTotalHT,
       isTTC: options.isTTC,
       discountPercent: options.discountPercent,
+      brand, 
       products: validProducts,
-      client: { name: currentClient.name, address: (currentClient as any).address, zipCode: (currentClient as any).zipCode, city: (currentClient as any).city, country: (currentClient as any).country, company: (currentClient as any).company, email: (currentClient as any).email, phone: (currentClient as any).phone }
+      client: currentClient 
+        ? { name: currentClient.name, address: (currentClient as any).address, zipCode: (currentClient as any).zipCode, city: (currentClient as any).city, country: (currentClient as any).country, company: (currentClient as any).company, email: (currentClient as any).email, phone: (currentClient as any).phone } 
+        : { name: "Client Inconnu" }
     }
 
     try {
@@ -324,14 +362,32 @@ const handleSave = async () => {
       </div>
 
       <div className="p-8 space-y-8">
+        
+        <div className="p-5 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">
+          <label className="text-xs font-black text-slate-400 uppercase tracking-wider block">🏢 Entité du Devis</label>
+          <div className="flex gap-4">
+            <label className={`flex-1 flex items-center justify-center gap-2 p-3 border rounded-xl cursor-pointer transition-all ${brand === 'NG' ? 'border-indigo-500 bg-indigo-50 text-indigo-700 font-bold shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+              <input type="radio" name="brand" value="NG" checked={brand === 'NG'} onChange={(e) => setBrand(e.target.value as any)} className="hidden" />
+              Nicole Germain
+            </label>
+            <label className={`flex-1 flex items-center justify-center gap-2 p-3 border rounded-xl cursor-pointer transition-all ${brand === 'VOSGIA' ? 'border-indigo-500 bg-indigo-50 text-indigo-700 font-bold shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+              <input type="radio" name="brand" value="VOSGIA" checked={brand === 'VOSGIA'} onChange={(e) => setBrand(e.target.value as any)} className="hidden" />
+              Vosgia
+            </label>
+            <label className={`flex-1 flex items-center justify-center gap-2 p-3 border rounded-xl cursor-pointer transition-all ${brand === 'NONE' ? 'border-slate-500 bg-slate-100 text-slate-700 font-bold shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+              <input type="radio" name="brand" value="NONE" checked={brand === 'NONE'} onChange={(e) => setBrand(e.target.value as any)} className="hidden" />
+              Anonyme
+            </label>
+          </div>
+        </div>
+
         {/* CLIENT ASSIGNATION */}
         <div className="p-5 bg-slate-50 border border-slate-200 rounded-3xl space-y-4">
           <label className="text-xs font-black text-slate-400 uppercase tracking-wider block">👤 Assignation du client</label>
           <div className="relative">
-            {/* 🎯 CORRECTIF : Input de recherche client contrasté */}
             <input 
               type="text"
-              placeholder="Taper le nom d'un client..."
+              placeholder="Taper le nom d'un client (Optionnel)..."
               value={clientSearch}
               onChange={(e) => { setClientSearch(e.target.value); if (selectedClientId) setSelectedClientId('') }}
               className="w-full p-3 bg-white placeholder:text-slate-500 text-slate-900 font-bold text-xs rounded-xl border border-slate-300 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 shadow-sm"
@@ -347,10 +403,15 @@ const handleSave = async () => {
             )}
           </div>
 
+          {!selectedClientId && !clientSearch && (
+            <p className="text-[10px] text-slate-500 font-black flex items-center gap-1.5 bg-white p-2 rounded-xl border border-slate-200">
+              💡 Ce devis n'est rattaché à aucun client (Devis Anonyme).
+            </p>
+          )}
+
           {clientSearch && !selectedClientId && !clients.some(c => c.name.toLowerCase() === clientSearch.toLowerCase().trim()) && (
             <div className="p-4 bg-white rounded-2xl border border-slate-200 space-y-3 shadow-sm">
               <p className="text-[10px] font-black text-amber-600 uppercase tracking-wider">✨ Nouveau client détecté !</p>
-              {/* 🎯 CORRECTIF : Champs du formulaire sous-client contrastés */}
               <input type="text" placeholder="Nom de la société (Optionnel)" value={quickCompany} onChange={(e) => setQuickCompany(e.target.value)} className="w-full p-2.5 bg-slate-50 placeholder:text-slate-500 text-slate-900 text-xs rounded-xl border border-slate-200 font-bold" />
               <input type="text" placeholder="Rue et numéro" value={quickAddress} onChange={(e) => setQuickAddress(e.target.value)} className="w-full p-2.5 bg-slate-50 placeholder:text-slate-500 text-slate-900 text-xs rounded-xl border border-slate-200 font-bold" />
               <div className="grid grid-cols-3 gap-2">
@@ -439,7 +500,6 @@ const handleSave = async () => {
               {product.family === 'CUSTOM' ? (
                 <div className="p-5 bg-white rounded-2xl shadow-sm border border-slate-200 space-y-4">
                   <label className="text-sm font-bold text-slate-800">Création sur-mesure</label>
-                  {/* 🎯 CORRECTIF : Inputs de création libre contrastés */}
                   <input type="text" placeholder="Nom de l'article" value={product.customName || ''} onChange={e => updateProduct(product.id, { customName: e.target.value })} className="w-full p-4 rounded-xl bg-slate-50 placeholder:text-slate-500 text-slate-900 font-bold border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500" />
                   <div className="grid grid-cols-2 gap-4">
                     <input type="number" placeholder="Prix de vente unitaire HT (€)" value={product.customPriceHT || ''} onChange={e => updateProduct(product.id, { customPriceHT: parseFloat(e.target.value) || 0 })} className="w-full p-4 rounded-xl bg-slate-50 placeholder:text-slate-500 text-slate-900 font-bold border border-slate-200 outline-none" />
@@ -475,7 +535,6 @@ const handleSave = async () => {
 
                     <div className="space-y-2">
                       <label className="text-sm font-bold text-slate-800">Tissu à utiliser</label>
-                      {/* 🎯 Nomenclature Nicole Germain (Jade) mise en valeur */}
                       <select value={product.fabricId} onChange={(e) => updateProduct(product.id, { fabricId: e.target.value })} className="w-full p-4 bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-2xl font-black outline-none">
                         <option value="" className="text-slate-800 font-bold">Sélectionner dans le stock de l'atelier...</option>
                         {fabrics.map(f => <option key={f.id} value={f.id} className="text-slate-900 font-bold">{f.reference} — {f.name} ({Number(f.pricePerMeter).toFixed(2)}€/m)</option>)}
@@ -490,15 +549,85 @@ const handleSave = async () => {
                     <div className="grid grid-cols-3 gap-4">
                       {product.family !== 'ROUND' ? (
                         <>
-                          {/* 🎯 CORRECTIF : Placeholders de taille assombris */}
                           <input type="number" value={product.dims.L || ''} onChange={(e) => updateDims(product.id, { ...product.dims, L: Number(e.target.value) })} placeholder="Longueur" className="p-4 rounded-xl border border-slate-200 text-center font-black text-slate-900 bg-white placeholder:text-slate-500 outline-none" />
                           <input type="number" value={product.dims.l || ''} onChange={(e) => updateDims(product.id, { ...product.dims, l: Number(e.target.value) })} placeholder="Largeur" className="p-4 rounded-xl border border-slate-200 text-center font-black text-slate-900 bg-white placeholder:text-slate-500 outline-none" />
                           {product.family === 'FITTED' && (
-                            <input type="number" value={product.dims.bonnet || ''} onChange={(e) => updateDims(product.id, { ...product.dims, bonnet: Number(e.target.value) })} placeholder="Bonnet" className="p-4 rounded-xl border border-slate-200 text-center font-black text-slate-900 bg-white placeholder:text-slate-500 outline-none" />
+                            <input type="number" value={product.dims.epaisseur || ''} onChange={(e) => updateDims(product.id, { ...product.dims, epaisseur: Number(e.target.value) })} placeholder="Épaisseur (cm)" className="p-4 rounded-xl border border-slate-200 text-center font-black text-slate-900 bg-white placeholder:text-slate-500 outline-none" />
                           )}
                         </>
                       ) : (
                         <input type="number" value={product.dims.diametre || ''} onChange={(e) => updateDims(product.id, { ...product.dims, diametre: Number(e.target.value) })} placeholder="Diamètre du lit rond" className="col-span-3 p-4 rounded-xl border border-slate-200 text-center font-black text-slate-900 bg-white placeholder:text-slate-500 outline-none" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 🟢 NOUVEAU : BLOC MERCERIE */}
+                  <div className="p-5 bg-white border border-slate-200 rounded-2xl space-y-4">
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                      🧵 Fournitures Spécifiques
+                    </label>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-600">Bobine de fil</label>
+                        <select 
+                          value={product.threadId || ''} 
+                          onChange={(e) => updateProduct(product.id, { threadId: e.target.value })}
+                          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none"
+                        >
+                          <option value="">Fil standard par défaut</option>
+                          {accessories?.filter(a => a.category.toLowerCase().includes('fil')).map(a => (
+                            <option key={a.id} value={a.id}>{a.name} ({a.pricePerUnit}€/m)</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {(product.family === 'ENVELOPE' || product.family === 'ROUND') && (
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-slate-600">Fermeture au mètre</label>
+                          <select 
+                            value={product.zipperId || ''} 
+                            onChange={(e) => updateProduct(product.id, { zipperId: e.target.value })}
+                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none"
+                          >
+                            <option value="">Fermeture par défaut</option>
+                            {accessories?.filter(a => a.category.toLowerCase().includes('fermeture') || a.category.toLowerCase().includes('zip')).map(a => (
+                              <option key={a.id} value={a.id}>{a.name} ({a.pricePerUnit}€/m)</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {product.family === 'FITTED' && (
+                        <>
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-600">Biais</label>
+                            <select 
+                              value={product.biasId || ''} 
+                              onChange={(e) => updateProduct(product.id, { biasId: e.target.value })}
+                              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none"
+                            >
+                              <option value="">Biais par défaut</option>
+                              {accessories?.filter(a => a.category.toLowerCase().includes('biais')).map(a => (
+                                <option key={a.id} value={a.id}>{a.name} ({a.pricePerUnit}€/m)</option>
+                              ))}
+                            </select>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-600">Élastique</label>
+                            <select 
+                              value={product.elasticId || ''} 
+                              onChange={(e) => updateProduct(product.id, { elasticId: e.target.value })}
+                              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none"
+                            >
+                              <option value="">Élastique par défaut</option>
+                              {accessories?.filter(a => a.category.toLowerCase().includes('elastique') || a.category.toLowerCase().includes('élastique')).map(a => (
+                                <option key={a.id} value={a.id}>{a.name} ({a.pricePerUnit}€/m)</option>
+                              ))}
+                            </select>
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>
@@ -545,7 +674,6 @@ const handleSave = async () => {
             <div className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-200">
               <span className="text-xs font-bold text-slate-800 whitespace-nowrap">Remise commerciale :</span>
               <div className="relative flex-1">
-                {/* 🎯 CORRECTIF : Remise contrastée */}
                 <input type="number" value={options.discountPercent || ''} onChange={(e) => setOptions({ ...options, discountPercent: parseFloat(e.target.value) || 0 })} min="0" max="100" placeholder="0" className="w-full text-right pr-7 py-2.5 px-3 border border-slate-300 rounded-xl text-sm font-black text-slate-900 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500" />
                 <span className="absolute right-3 top-2 text-sm font-black text-slate-500">%</span>
               </div>

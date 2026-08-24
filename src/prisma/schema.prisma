@@ -198,12 +198,18 @@ model Quote {
   paymentMethod String?       
   products      Json?
   
+  // 🟢 NOUVEAU : Ajout de la marque (NG, VOSGIA, ou NONE)
+  brand         String        @default("NG")
+  
   userId        String?
   user          User?         @relation(fields: [userId], references: [id])
   fabricId      String
   fabric        Fabric        @relation(fields: [fabricId], references: [id])
-  clientId      String
-  client        Client        @relation(fields: [clientId], references: [id])
+  
+  // 🟢 MODIFICATION : Le client devient totalement optionnel (ajout des '?' )
+  clientId      String?
+  client        Client?       @relation(fields: [clientId], references: [id])
+  
   items         QuoteItem[]
   isPaid        Boolean       @default(false)
 
@@ -255,6 +261,7 @@ model QuoteItem {
   fabricId         String?   
   fabric           Fabric?   @relation("FabricA", fields: [fabricId], references: [id]) 
   quantityMeters   Float?    
+  supplies  Json?   // 🟢 NOUVEAU : Stocke les id et métrages de la mercerie
   
   // 🟢 NOUVEAU : Tissu Secondaire (Face B)
   fabricBId        String?

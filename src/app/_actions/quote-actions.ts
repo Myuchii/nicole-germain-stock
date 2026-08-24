@@ -7,7 +7,7 @@ import { getAtelierSettings, getProductTypes } from './settings-actions'
 
 const prisma = new PrismaClient()
 
-// 1. Créer un devis (SUPPORT MULTI-PRODUITS + QUANTITÉS MULTIPLIÉES + SÉCURITÉ HT PUR)
+// 1. Créer un devis
 export async function createQuoteFromCalculator(data: any) {
   try {
     let productsData: any[] = []
@@ -15,26 +15,27 @@ export async function createQuoteFromCalculator(data: any) {
     const isTTC = data.isTTC === true || data.isTTC === 'true'
     const discountPercent = parseFloat(data.discountPercent) || 0
     const clientId = data.clientId
-    
+    const brand = data.brand || 'NG' 
     const paymentMethod = data.paymentMethod || null
     const dueDate = data.dueDate ? new Date(data.dueDate) : null
     
-    if (!clientId) {
-      throw new Error("Un client doit obligatoirement être rattaché au devis.")
-    }
-
     if (data.products && Array.isArray(data.products)) {
       productsData = data.products
     } else {
       throw new Error('Structure de données invalide')
     }
 
-    // Récupérer les tissus
     const fabricIds = productsData.map(p => p.fabricId).filter(Boolean)
     const fabrics = await prisma.fabric.findMany({
       where: { id: { in: fabricIds } } 
     })
     const fabricMap = new Map(fabrics.map(f => [f.id, f]))
+
+    // 🟢 Récupération de toute la mercerie pour les prix dynamiques
+    const accessories = await prisma.accessory.findMany({
+      where: { isArchived: false }
+    })
+    const accMap = new Map(accessories.map(a => [a.id, a]))
 
     const fallbackFabric = await prisma.fabric.findFirst()
     const settings = await getAtelierSettings()
@@ -45,11 +46,9 @@ export async function createQuoteFromCalculator(data: any) {
     const calculatedProducts = productsData.map(product => {
       const qty = Math.max(1, parseInt(product.quantity) || 1)
 
-      // GESTION DE L'ARTICLE LIBRE (CUSTOM)
       if (product.family === 'CUSTOM') {
         let finalUnitPrice = Number(product.customPriceHT) || 0
         if (discountPercent > 0) finalUnitPrice = finalUnitPrice * (1 - discountPercent / 100)
-        // 🎯 FIX : On supprime la multiplication par 1.20 pour figer du HT propre en DB
 
         return {
           ...product,
@@ -59,33 +58,46 @@ export async function createQuoteFromCalculator(data: any) {
           laborMinutes: (Number(product.customLaborMinutes) || 0) * qty,
           fabricPricePerMeter: 0,
           fabricId: product.fabricId || null,
-          quantity: qty
+          quantity: qty,
+          debugSupplies: {} // Pas de fournitures auto pour le sur-mesure
         }
       }
 
-      // 🧵 GESTION CLASSIQUE (MOTEUR NG MULTIPLIÉ)
       const fabric = fabricMap.get(product.fabricId)
       const currentProductType = productTypes?.find(pt => pt.family === product.family)
       const baseLaborMinutes = currentProductType ? currentProductType.baseLaborTime : 30 
    
       const L = Number(product.dims?.L ?? product.L) || 200
       const l = Number(product.dims?.l ?? product.l) || 160
-      const bonnet = Number(product.dims?.bonnet ?? product.bonnet) || 30
+      const epaisseur = Number(product.dims?.epaisseur ?? product.epaisseur) || 20
       const diametre = Number(product.dims?.diametre ?? product.diametre) || 210
+
+      // 🟢 Récupération des prix exacts selon les choix de l'utilisateur
+      const thread = product.threadId ? accMap.get(product.threadId) : null
+      const bias = product.biasId ? accMap.get(product.biasId) : null
+      const elastic = product.elasticId ? accMap.get(product.elasticId) : null
+      const zipper = product.zipperId ? accMap.get(product.zipperId) : null
+
+      const dynamicSupplyPrices = {
+        threadPerMeter: thread ? thread.pricePerUnit : 0.005,
+        biasPerMeter: bias ? bias.pricePerUnit : 0.10,
+        elasticPerMeter: elastic ? elastic.pricePerUnit : 0.20,
+        zipperPerMeter: zipper ? zipper.pricePerUnit : 6.00
+      }
 
       const result = calculateNGProduction(
         product.family,
         product.range || 'BASIQUE',
-        { L, l, bonnet, diametre },
+        { L, l, epaisseur, diametre }, 
         { mainPrice: Number(fabric?.pricePerMeter || 0), laize: Number(fabric?.width || 300) },
         baseLaborMinutes,           
         laborCostPerMin,   
-        marginRate         
+        marginRate,
+        dynamicSupplyPrices // 🟢 On injecte les vrais prix
       )
       
       let finalProductUnitPrice = result.totalPriceHT
       if (discountPercent > 0) finalProductUnitPrice = finalProductUnitPrice * (1 - discountPercent / 100)
-      // 🎯 FIX : On supprime la multiplication par 1.20 pour figer du HT propre en DB
       
       return {
         ...product,
@@ -93,46 +105,57 @@ export async function createQuoteFromCalculator(data: any) {
         mainFabricMeters: product.isChute ? 0 : (Number.isNaN(result.mainFabricMeters) ? 0 : result.mainFabricMeters) * qty,
         laborMinutes: (Number.isNaN(result.laborMinutes) ? 0 : result.laborMinutes) * qty,
         fabricPricePerMeter: Number(fabric?.pricePerMeter || 0),
-        quantity: qty
+        quantity: qty,
+        debugSupplies: result.debug?.supplies || {} // 🟢 FIX 1 : On garde les métrages en mémoire ici
       }
     })
 
     const totalPrice = calculatedProducts.reduce((sum, p) => sum + p.totalPriceFinal, 0)
     const totalQuantityUnits = calculatedProducts.reduce((sum, p) => sum + p.quantity, 0)
-
     const firstValidFabricId = calculatedProducts.find(p => p.fabricId)?.fabricId || fallbackFabric?.id
 
     const quote = await prisma.quote.create({
       data: {
         reference: `DEV-${Date.now().toString().slice(-6)}`,
-        totalPrice: totalPrice, // Devient le total global HT propre
+        totalPrice: totalPrice, 
         quantity: totalQuantityUnits, 
         status: 'DRAFT',
         isTTC: isTTC,
+        brand: brand, 
         paymentMethod: paymentMethod, 
         dueDate: dueDate,
         products: calculatedProducts,            
-        client: { connect: { id: clientId } },
+        client: clientId ? { connect: { id: clientId } } : undefined, 
         fabric: { connect: { id: firstValidFabricId } }
       }
     })
 
-    // Créer les QuoteItem
     await prisma.quoteItem.createMany({
-      data: calculatedProducts.map(p => ({
-        quoteId: quote.id,
-        fabricId: p.fabricId || null,
-        customName: p.family === 'CUSTOM' ? p.customName : null,
-        customPriceHT: p.family === 'CUSTOM' ? p.customPriceHT : null,
-        quantityMeters: p.mainFabricMeters, 
-        prodTimeMinutes: p.laborMinutes,
-        costPerMinute: laborCostPerMin,
-        sellingPrice: p.totalPriceFinal, // Prix de la ligne en HT pur
-        quantityUnits: p.quantity, 
-        statusProduction: "A_COUPER",
-        isChute: p.isChute || false,
-        discountPercent: discountPercent
-      }))
+      data: calculatedProducts.map(p => {
+        // 🟢 FIX 2 : On construit les fournitures avec les données mémorisées
+        const itemSupplies = {
+          thread: p.threadId ? { id: p.threadId, meters: p.debugSupplies.threadMeters || 0 } : null,
+          bias: p.biasId ? { id: p.biasId, meters: p.debugSupplies.biasMeters || 0 } : null,
+          elastic: p.elasticId ? { id: p.elasticId, meters: p.debugSupplies.elasticMeters || 0 } : null,
+          zipper: p.zipperId ? { id: p.zipperId, meters: p.debugSupplies.zipperMeters || 0 } : null,
+        }
+
+        return {
+          quoteId: quote.id,
+          fabricId: p.fabricId || null,
+          customName: p.family === 'CUSTOM' ? p.customName : null,
+          customPriceHT: p.family === 'CUSTOM' ? p.customPriceHT : null,
+          quantityMeters: p.mainFabricMeters, 
+          prodTimeMinutes: p.laborMinutes,
+          costPerMinute: laborCostPerMin,
+          sellingPrice: p.totalPriceFinal,
+          quantityUnits: p.quantity, 
+          statusProduction: "A_COUPER",
+          isChute: p.isChute || false,
+          discountPercent: discountPercent,
+          supplies: itemSupplies // 🟢 ENREGISTREMENT DES FOURNITURES
+        }
+      })
     })
 
     revalidatePath('/quotes')
@@ -144,7 +167,7 @@ export async function createQuoteFromCalculator(data: any) {
   }
 }
 
-// 1.BIS Mettre à jour un devis existant (MODIFICATION POST-DEVIS)
+// 1.BIS Mettre à jour un devis existant
 export async function updateQuoteFromCalculator(quoteId: string, data: any) {
   try {
     let productsData: any[] = []
@@ -152,16 +175,20 @@ export async function updateQuoteFromCalculator(quoteId: string, data: any) {
     const isTTC = data.isTTC === true || data.isTTC === 'true'
     const discountPercent = parseFloat(data.discountPercent) || 0
     const clientId = data.clientId
+    const brand = data.brand || 'NG' 
     const paymentMethod = data.paymentMethod || null
     const dueDate = data.dueDate ? new Date(data.dueDate) : null
     
-    if (!clientId) throw new Error("Un client doit obligatoirement être rattaché au devis.")
     if (data.products && Array.isArray(data.products)) productsData = data.products
     else throw new Error('Structure de données invalide')
 
     const fabricIds = productsData.map(p => p.fabricId).filter(Boolean)
     const fabrics = await prisma.fabric.findMany({ where: { id: { in: fabricIds } } })
     const fabricMap = new Map(fabrics.map(f => [f.id, f]))
+
+    // 🟢 Récupération de toute la mercerie pour les prix dynamiques
+    const accessories = await prisma.accessory.findMany({ where: { isArchived: false } })
+    const accMap = new Map(accessories.map(a => [a.id, a]))
 
     const fallbackFabric = await prisma.fabric.findFirst()
     const settings = await getAtelierSettings()
@@ -175,7 +202,6 @@ export async function updateQuoteFromCalculator(quoteId: string, data: any) {
       if (product.family === 'CUSTOM') {
         let finalUnitPrice = Number(product.customPriceHT) || 0
         if (discountPercent > 0) finalUnitPrice = finalUnitPrice * (1 - discountPercent / 100)
-        // 🎯 FIX : On supprime la multiplication par 1.20 pour figer du HT propre en DB
         return {
           ...product,
           dims: {},
@@ -184,7 +210,8 @@ export async function updateQuoteFromCalculator(quoteId: string, data: any) {
           laborMinutes: (Number(product.customLaborMinutes) || 0) * qty,
           fabricPricePerMeter: 0,
           fabricId: product.fabricId || null,
-          quantity: qty
+          quantity: qty,
+          debugSupplies: {} 
         }
       }
 
@@ -194,19 +221,30 @@ export async function updateQuoteFromCalculator(quoteId: string, data: any) {
    
       const L = Number(product.dims?.L ?? product.L) || 200
       const l = Number(product.dims?.l ?? product.l) || 160
-      const bonnet = Number(product.dims?.bonnet ?? product.bonnet) || 30
+      const epaisseur = Number(product.dims?.epaisseur ?? product.epaisseur) || 20
       const diametre = Number(product.dims?.diametre ?? product.diametre) || 210
+
+      const thread = product.threadId ? accMap.get(product.threadId) : null
+      const bias = product.biasId ? accMap.get(product.biasId) : null
+      const elastic = product.elasticId ? accMap.get(product.elasticId) : null
+      const zipper = product.zipperId ? accMap.get(product.zipperId) : null
+
+      const dynamicSupplyPrices = {
+        threadPerMeter: thread ? thread.pricePerUnit : 0.005,
+        biasPerMeter: bias ? bias.pricePerUnit : 0.10,
+        elasticPerMeter: elastic ? elastic.pricePerUnit : 0.20,
+        zipperPerMeter: zipper ? zipper.pricePerUnit : 6.00
+      }
 
       const result = calculateNGProduction(
         product.family, product.range || 'BASIQUE',
-        { L, l, bonnet, diametre },
+        { L, l, epaisseur, diametre }, 
         { mainPrice: Number(fabric?.pricePerMeter || 0), laize: Number(fabric?.width || 300) },
-        baseLaborMinutes, laborCostPerMin, marginRate         
+        baseLaborMinutes, laborCostPerMin, marginRate, dynamicSupplyPrices         
       )
       
       let finalProductUnitPrice = result.totalPriceHT
       if (discountPercent > 0) finalProductUnitPrice = finalProductUnitPrice * (1 - discountPercent / 100)
-      // 🎯 FIX : On supprime la multiplication par 1.20 pour figer du HT propre en DB
       
       return {
         ...product,
@@ -214,7 +252,8 @@ export async function updateQuoteFromCalculator(quoteId: string, data: any) {
         mainFabricMeters: product.isChute ? 0 : (Number.isNaN(result.mainFabricMeters) ? 0 : result.mainFabricMeters) * qty,
         laborMinutes: (Number.isNaN(result.laborMinutes) ? 0 : result.laborMinutes) * qty,
         fabricPricePerMeter: Number(fabric?.pricePerMeter || 0),
-        quantity: qty
+        quantity: qty,
+        debugSupplies: result.debug?.supplies || {} // 🟢 FIX 1 
       }
     })
 
@@ -222,40 +261,48 @@ export async function updateQuoteFromCalculator(quoteId: string, data: any) {
     const totalQuantityUnits = calculatedProducts.reduce((sum, p) => sum + p.quantity, 0)
     const firstValidFabricId = calculatedProducts.find(p => p.fabricId)?.fabricId || fallbackFabric?.id
 
-    // ON EFFACE LES ANCIENNES LIGNES DU DEVIS
     await prisma.quoteItem.deleteMany({ where: { quoteId } })
 
-    // ON MET À JOUR LE DEVIS PARENT
     await prisma.quote.update({
       where: { id: quoteId },
       data: {
         totalPrice: totalPrice,
         quantity: totalQuantityUnits,
         isTTC: isTTC,
+        brand: brand, 
         paymentMethod: paymentMethod, 
         dueDate: dueDate,             
-        clientId: clientId,
+        clientId: clientId || null, 
         products: calculatedProducts,
         fabricId: firstValidFabricId
       }
     })
 
-    // ON RECRÉE LES NOUVELLES LIGNES
     await prisma.quoteItem.createMany({
-      data: calculatedProducts.map(p => ({
-        quoteId: quoteId,
-        fabricId: p.fabricId || null,
-        customName: p.family === 'CUSTOM' ? p.customName : null,
-        customPriceHT: p.family === 'CUSTOM' ? p.customPriceHT : null,
-        quantityMeters: p.mainFabricMeters, 
-        prodTimeMinutes: p.laborMinutes,
-        costPerMinute: laborCostPerMin,
-        sellingPrice: p.totalPriceFinal,
-        quantityUnits: p.quantity, 
-        statusProduction: "A_COUPER",
-        isChute: p.isChute || false,
-        discountPercent: discountPercent
-      }))
+      data: calculatedProducts.map(p => {
+        const itemSupplies = {
+          thread: p.threadId ? { id: p.threadId, meters: p.debugSupplies.threadMeters || 0 } : null,
+          bias: p.biasId ? { id: p.biasId, meters: p.debugSupplies.biasMeters || 0 } : null,
+          elastic: p.elasticId ? { id: p.elasticId, meters: p.debugSupplies.elasticMeters || 0 } : null,
+          zipper: p.zipperId ? { id: p.zipperId, meters: p.debugSupplies.zipperMeters || 0 } : null,
+        }
+
+        return {
+          quoteId: quoteId, // 🟢 FIX 3 : C'est bien quoteId ici, et pas quote.id !
+          fabricId: p.fabricId || null,
+          customName: p.family === 'CUSTOM' ? p.customName : null,
+          customPriceHT: p.family === 'CUSTOM' ? p.customPriceHT : null,
+          quantityMeters: p.mainFabricMeters, 
+          prodTimeMinutes: p.laborMinutes,
+          costPerMinute: laborCostPerMin,
+          sellingPrice: p.totalPriceFinal,
+          quantityUnits: p.quantity, 
+          statusProduction: "A_COUPER",
+          isChute: p.isChute || false,
+          discountPercent: discountPercent,
+          supplies: itemSupplies
+        }
+      })
     })
 
     revalidatePath('/quotes')
@@ -267,7 +314,7 @@ export async function updateQuoteFromCalculator(quoteId: string, data: any) {
   }
 }
 
-// 1. VALIDER LE DEVIS (Simple passage en fabrication, sans toucher au tissu)
+// 1. VALIDER LE DEVIS
 export async function validateQuote(id: string) {
   try {
     const quote = await prisma.quote.findUnique({
@@ -277,7 +324,6 @@ export async function validateQuote(id: string) {
     if (!quote) throw new Error("Devis introuvable")
     if (quote.status === 'VALIDATED') return { success: false, error: "Ce devis est déjà validé." }
 
-    // On valide l'en-tête, les lignes passent automatiquement à disposition de l'atelier
     await prisma.quote.update({
       where: { id },
       data: { 
@@ -297,7 +343,7 @@ export async function validateQuote(id: string) {
   }
 }
 
-// 2. 🆕 NOUVELLE ACTION : Validation de la coupe à la table d'atelier
+// 2. Validation de la coupe à la table d'atelier (AVEC DÉDUCTION DE MERCERIE)
 export async function cutItemInAtelier(itemId: string, useChute: boolean) {
   try {
     const item = await prisma.quoteItem.findUnique({
@@ -310,17 +356,15 @@ export async function cutItemInAtelier(itemId: string, useChute: boolean) {
 
     await prisma.$transaction(async (tx) => {
       
-      // ÉTAPE 1 : Mettre à jour le statut de fabrication de l'article
       await tx.quoteItem.update({
         where: { id: itemId },
         data: {
-          statusProduction: 'EN_COUTURE', // Bascule à l'étape suivante (Couture)
+          statusProduction: 'EN_COUTURE',
           startedCoutureAt: new Date(),
-          isChute: useChute // Enregistre si Nicole a utilisé une chute ou non
+          isChute: useChute 
         }
       })
 
-      // ÉTAPE 2 : Si Nicole utilise un rouleau normal (Pas une chute), on applique ton calcul unitaire
       if (!useChute && item.fabricId && item.quantityMeters && item.quantityUnits) {
         const totalUnitsToMake = item.quantityUnits
         const unitMeters = item.quantityMeters / totalUnitsToMake 
@@ -355,7 +399,6 @@ export async function cutItemInAtelier(itemId: string, useChute: boolean) {
           }
         }
 
-        // Sécurité si manque de tissu
         if (unitsRemaining > 0 && activeLots.length > 0) {
           const emergencyMeters = unitsRemaining * unitMeters
           await tx.fabricLot.update({
@@ -364,7 +407,6 @@ export async function cutItemInAtelier(itemId: string, useChute: boolean) {
           })
         }
 
-        // Mouvement comptable classique
         await tx.stockMovement.create({
           data: { 
             fabricId: item.fabricId, 
@@ -374,14 +416,12 @@ export async function cutItemInAtelier(itemId: string, useChute: boolean) {
           }
         })
 
-        // Baisse du cache global
         await tx.fabric.update({
           where: { id: item.fabricId },
           data: { stockMeters: { decrement: item.quantityMeters } }
         })
 
       } else if (useChute && item.fabricId) {
-        // 🎯 Si c'est une chute, on crée juste une notification de stock sans toucher aux rouleaux précieux !
         await tx.stockMovement.create({
           data: {
             fabricId: item.fabricId,
@@ -391,6 +431,38 @@ export async function cutItemInAtelier(itemId: string, useChute: boolean) {
           }
         })
       }
+
+      // 🟢 DÉDUCTION DE LA MERCERIE (Fil, Zip, Biais, Élastique)
+      if (item.supplies && typeof item.supplies === 'object') {
+        const suppliesObj = item.supplies as any
+        const suppliesList = [suppliesObj.thread, suppliesObj.bias, suppliesObj.elastic, suppliesObj.zipper].filter(s => s && s.id && s.meters > 0)
+
+        for (const supply of suppliesList) {
+          const totalMetersToDeduct = supply.meters * (item.quantityUnits || 1)
+
+          await tx.accessory.update({
+            where: { id: supply.id },
+            data: { stockQuantity: { decrement: totalMetersToDeduct } }
+          })
+
+          let supplyUnitsRemaining = totalMetersToDeduct
+          const activeAccLots = await tx.accessoryLot.findMany({
+            where: { accessoryId: supply.id, location: 'ATELIER', quantityLeft: { gt: 0 } },
+            orderBy: { createdAt: 'asc' }
+          })
+
+          for (const lot of activeAccLots) {
+            if (supplyUnitsRemaining <= 0) break
+            const deduct = Math.min(lot.quantityLeft, supplyUnitsRemaining)
+            await tx.accessoryLot.update({
+              where: { id: lot.id },
+              data: { quantityLeft: { decrement: deduct } }
+            })
+            supplyUnitsRemaining -= deduct
+          }
+        }
+      }
+
     })
 
     revalidatePath('/atelier')
@@ -402,7 +474,7 @@ export async function cutItemInAtelier(itemId: string, useChute: boolean) {
   }
 }
 
-// 3. Annuler / Supprimer une commande ou un devis
+// 3. Annuler / Supprimer une commande
 export async function deleteQuote(id: string, createPF: boolean = false) {
   try {
     const quote = await prisma.quote.findUnique({
@@ -521,7 +593,6 @@ export async function processCustomerReturn(quoteId: string, reason: string, act
   }
 }
 
-// 🟢 ACTION : CHIFFRER UNE COMMANDE
 export async function updateOrderPrice(quoteId: string, newPriceHT: number) {
   try {
     await prisma.quote.update({
@@ -534,7 +605,7 @@ export async function updateOrderPrice(quoteId: string, newPriceHT: number) {
       data: { sellingPrice: newPriceHT }
     })
 
-    revalidatePath('/commandes') // ou le chemin de ta page de commandes
+    revalidatePath('/commandes') 
     return { success: true }
   } catch (error) {
     console.error("Erreur lors du chiffrage :", error)

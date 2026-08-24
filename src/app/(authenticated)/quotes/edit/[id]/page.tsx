@@ -3,16 +3,15 @@ import UniversalConfigurator from '@/components/UniversalConfigurator'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
+// 🟢 Il manquait ces imports !
+import { getAtelierSettings, getProductTypes } from '@/app/_actions/settings-actions'
 
 const prisma = new PrismaClient()
 
-// 🆕 1. On déclare params comme étant une Promesse
 export default async function EditQuotePage({ params }: { params: Promise<{ id: string }> }) {
   
-  // 🆕 2. On "attend" de déballer les paramètres pour récupérer l'ID
   const { id } = await params
 
-  // 1. Récupération du devis existant avec son client ET ses lignes de produits
   const quote = await prisma.quote.findUnique({
     where: { id },
     include: { 
@@ -23,9 +22,12 @@ export default async function EditQuotePage({ params }: { params: Promise<{ id: 
 
   if (!quote) return notFound()
 
-  // 2. Récupération des données référentielles
   const fabricsRaw = await prisma.fabric.findMany({ where: { isArchived: false } })
   const clients = await prisma.client.findMany({ orderBy: { name: 'asc' } })
+
+  // 🟢 On récupère les paramètres de l'atelier
+  const settings = await getAtelierSettings()
+  const productTypes = await getProductTypes()
 
   const fabrics = fabricsRaw.map(f => ({
     ...f,
@@ -43,7 +45,8 @@ export default async function EditQuotePage({ params }: { params: Promise<{ id: 
           <h1 className="text-2xl font-serif font-bold text-slate-900">
             Modifier le devis {quote.reference}
           </h1>
-          <p className="text-sm text-slate-500">Client : {quote.client?.name}</p>
+          {/* 🟢 Gestion du client anonyme ici */}
+          <p className="text-sm text-slate-500">Client : {quote.client?.name || 'Anonyme'}</p>
         </div>
       </div>
 
@@ -52,6 +55,9 @@ export default async function EditQuotePage({ params }: { params: Promise<{ id: 
           fabrics={JSON.parse(JSON.stringify(fabrics))} 
           clients={JSON.parse(JSON.stringify(clients))}
           initialData={JSON.parse(JSON.stringify(quote))} 
+          // 🟢 On passe les paramètres au configurateur
+          settings={settings}
+          productTypes={productTypes}
         />
       </div>
     </div>

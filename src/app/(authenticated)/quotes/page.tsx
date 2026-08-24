@@ -12,6 +12,10 @@ const prisma = new PrismaClient()
 export default async function QuotesPage() {
   const fabricsRaw = await prisma.fabric.findMany({ where: { isArchived: false } })
   const clients = await prisma.client.findMany({ orderBy: { name: 'asc' } })
+  
+  // 🟢 NOUVEAU : On récupère la mercerie (fil, élastique, etc.)
+  const accessoriesRaw = await prisma.accessory.findMany({ where: { isArchived: false } })
+
   const quotesRaw = await prisma.quote.findMany({
     where: { status: 'DRAFT' },
     include: { fabric: true, client: true },
@@ -31,6 +35,7 @@ export default async function QuotesPage() {
     ...q,
     totalPrice: Number(q.totalPrice),
     quantity: Number(q.quantity),
+    brand: q.brand || 'NG',
   }))
 
   return (
@@ -46,7 +51,7 @@ export default async function QuotesPage() {
           <h2 className="text-xl font-serif font-bold flex items-center gap-2 text-slate-700">
             <FileText className="text-slate-800" /> Devis en attente
           </h2>
-          
+
           {quotes.length === 0 ? (
             <div className="p-10 border-2 border-dashed border-slate-200 rounded-3xl text-center text-slate-400">
               Aucun devis en attente. Utilisez le calculateur à droite.
@@ -60,26 +65,33 @@ export default async function QuotesPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-2xl font-serif font-bold text-slate-900">{quote.totalPrice.toFixed(2)} €</span>
                         <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold uppercase rounded-md">Brouillon</span>
+
+                        {quote.brand === 'VOSGIA' && (
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold uppercase rounded-md">Vosgia</span>
+                        )}
+                        {quote.brand === 'NG' && (
+                          <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold uppercase rounded-md">NG</span>
+                        )}
+                        {quote.brand === 'NONE' && (
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold uppercase rounded-md">Anonyme</span>
+                        )}
                       </div>
                       <p className="text-xs text-slate-400 font-mono">
                         Réf: {quote.reference}
                       </p>
                     </div>
 
-                    {/* Bloc d'informations client enrichi */}
                     <div className="text-sm text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
                       <p className="font-bold text-slate-800 flex items-center gap-1.5">
                         👤 {quote.client?.name || "Client non spécifié"}
                       </p>
-                      
-                      {/* 🆕 Affichage dynamique de la société si elle existe */}
+
                       {quote.client?.company && (
                         <p className="text-xs text-slate-500 flex items-center gap-1">
                           <Building2 size={12} className="text-slate-400" /> {quote.client.company}
                         </p>
                       )}
 
-                      {/* 🆕 Affichage dynamique du pays (ex: "France" ou "Belgique") */}
                       <p className="text-xs text-slate-500 flex items-center gap-1">
                         <MapPin size={12} className="text-slate-400" /> {quote.client?.country || "France"}
                       </p>
@@ -89,9 +101,8 @@ export default async function QuotesPage() {
                       Matière : {quote.fabric?.name} — {quote.quantity.toFixed(1)}m
                     </p>
                   </div>
-                  
+
                   <div className="flex gap-3">
-                    {/* 🆕 LE BOUTON MODIFIER */}
                     <Link href={`/quotes/edit/${quote.id}`}>
                       <button className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all">
                         <Edit size={20} />
@@ -122,6 +133,7 @@ export default async function QuotesPage() {
           <UniversalConfigurator 
             fabrics={JSON.parse(JSON.stringify(fabrics))} 
             clients={JSON.parse(JSON.stringify(clients))} 
+            accessories={JSON.parse(JSON.stringify(accessoriesRaw))} // 🟢 NOUVEAU : On transmet la mercerie !
             settings={settings}
             productTypes={productTypes}
           />

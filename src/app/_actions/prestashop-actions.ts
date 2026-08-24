@@ -90,7 +90,7 @@ export async function syncPrestashopOrders() {
     }
 
     const cleanUrl = psUrl.replace(/\/$/, '')
-    const apiUrl = `${cleanUrl}/api/orders?ws_key=${psKey}&display=full&output_format=JSON&sort=[id_DESC]&limit=2000`
+    const apiUrl = `${cleanUrl}/api/orders?ws_key=${psKey}&display=full&output_format=JSON&sort=[id_DESC]&limit=20`
 
     const response = await fetch(apiUrl, {
       headers: {

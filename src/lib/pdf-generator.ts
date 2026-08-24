@@ -29,6 +29,8 @@ interface QuotePDFData {
   totalPrice: number
   isTTC?: boolean
   discountPercent?: number
+  // 🟢 NOUVELLE LIGNE : On ajoute le choix de la marque (NG par défaut, VOSGIA, ou AUCUNE)
+  brand?: 'NG' | 'VOSGIA' | 'NONE' 
   products: Product[]
   client: {
     name: string
@@ -47,36 +49,55 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
   }
 
   const doc = new jsPDF('p', 'mm', 'a4')
+  
+  // On définit la marque par défaut sur NG si rien n'est coché
+  const activeBrand = data.brand || 'NG'
 
   // --- 0. LOGO ---
-  try {
-    const response = await fetch('/logo.png') 
-    const blob = await response.blob()
-    const base64Logo = await new Promise<string>((resolve) => {
-      const reader = new FileReader()
-      reader.onloadend = () => resolve(reader.result as string)
-      reader.readAsDataURL(blob)
-    })
-    doc.addImage(base64Logo, 'PNG', 20, 10, 40, 15)
-  } catch (error) {
-    console.warn("Génération sans logo.")
+  if (activeBrand !== 'NONE') {
+    try {
+      // On charge le logo dynamiquement selon la marque choisie
+      const logoPath = activeBrand === 'VOSGIA' ? '/logo-vosgia.png' : '/logo.png'
+      const response = await fetch(logoPath) 
+      const blob = await response.blob()
+      const base64Logo = await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(reader.result as string)
+        reader.readAsDataURL(blob)
+      })
+      doc.addImage(base64Logo, 'PNG', 20, 10, 40, 15)
+    } catch (error) {
+      console.warn(`Génération sans logo pour ${activeBrand}.`)
+    }
   }
 
-  // --- 1. EN-TÊTE ---
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(16)
-  doc.text('ATELIER NICOLE GERMAIN', 20, 35)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.text('Confection de Linge de Lit sur Mesure', 20, 41)
-  doc.text('Email : contact@nicolegermain.com', 20, 46)
+  // --- 1. EN-TÊTE EXPÉDITEUR ---
+  if (activeBrand === 'NG') {
+    doc.setFont('helvetica', 'bold').setFontSize(16)
+    doc.text('ATELIER NICOLE GERMAIN', 20, 35)
+    doc.setFont('helvetica', 'normal').setFontSize(9)
+    doc.text('Confection de Linge de Lit sur Mesure', 20, 41)
+    doc.text('Email : contact@nicolegermain.com', 20, 46)
+  } else if (activeBrand === 'VOSGIA') {
+    doc.setFont('helvetica', 'bold').setFontSize(16)
+    doc.text('VOSGIA', 20, 35)
+    doc.setFont('helvetica', 'normal').setFontSize(9)
+    doc.text('Linge de Lit Fabrication Française', 20, 41)
+    doc.text('Email : contact@vosgia.fr', 20, 46)
+  }
+  // Si c'est 'NONE', on n'écrit rien du tout dans ce coin, le devis est 100% anonyme côté expéditeur.
 
   // --- 2. CLIENT ---
   const rightColumnX = 120
   doc.setFont('helvetica', 'bold').setFontSize(10)
   doc.text('DESTINATAIRE :', rightColumnX, 35)
   doc.setFont('helvetica', 'bold').setFontSize(11)
-  const clientName = data.client?.name || "Client non spécifié"
+  
+  // 🟢 MODIFICATION : Si le client n'existe pas, on met un espace vide plutôt que "Client non spécifié"
+  const clientName = data.client?.name && data.client.name !== "Client Inconnu" 
+    ? data.client.name 
+    : "_______________________"
+    
   doc.text(clientName.toUpperCase(), rightColumnX, 41)
   doc.setFont('helvetica', 'normal').setFontSize(10)
   
@@ -110,53 +131,48 @@ export async function generateQuotePDF(data: QuotePDFData): Promise<Blob | null>
     if (product.family === 'ROUND') labelFamily = 'Ouvrage Rond'
     if (product.family === 'CUSTOM') labelFamily = 'Sur-mesure'
 
-    // 1. Gestion du libellé Ouvrage
     const ouvrageStr = product.customName ? product.customName : labelFamily
 
-    // 2. Dimensions
     const dimensionsStr = product.family === 'ROUND' 
       ? `Diam. ${product.dims.diametre || 210}cm`
       : (product.dims.L === 0 && product.dims.l === 0) ? 'Sur-mesure' : `${product.dims.L}×${product.dims.l}${product.dims.bonnet ? ` (B.${product.dims.bonnet}cm)` : ''}`
 
-    // 3. Extraction Qualité & Couleur
     const qualiteStr = `${product.range}\n(${product.fabric.name.split('-')[0].trim()})`
     const colorStr = product.fabric.color 
       ? product.fabric.color.toUpperCase() 
       : (product.fabric.name.split('-')[1]?.trim().toUpperCase() || 'STANDARD')
 
-    // 4. Calcul des montants HT stables par ligne
     const qte = product.quantity || 1
     const totalRowPriceRaw = product.totalPriceHT || 0
     const ptHT = data.isTTC ? (totalRowPriceRaw / 1.20) : totalRowPriceRaw
     const puHT = ptHT / qte
 
     return [
-      ouvrageStr,            // 1. OUVRAGE
-      `${qte}`,              // 2. QTÉ
-      dimensionsStr,         // 3. DIMENS°
-      qualiteStr,            // 4. QUALITÉ
-      colorStr,              // 5. COULEUR
-      `${puHT.toFixed(2)} €`,// 6. PU HT
-      `${ptHT.toFixed(2)} €` // 7. PT HT
+      ouvrageStr,
+      `${qte}`,
+      dimensionsStr,
+      qualiteStr,
+      colorStr,
+      `${puHT.toFixed(2)} €`,
+      `${ptHT.toFixed(2)} €`
     ]
   })
 
   autoTable(doc, {
     startY: 104, 
-    // 🎯 En-têtes calqués sur ton croquis papier
     head: [['OUVRAGE', 'QTÉ', 'DIMENS°', 'QUALITÉ', 'COULEUR', 'PU HT', 'PT HT']],
     body: tableData,
     theme: 'striped',
     headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
     bodyStyles: { fontSize: 8.5, valign: 'middle' },
     columnStyles: { 
-      0: { halign: 'left', cellWidth: 35 },   // Ouvrage
-      1: { halign: 'center', cellWidth: 12 }, // Qté
-      2: { halign: 'center', cellWidth: 28 }, // Dimens°
-      3: { halign: 'left', cellWidth: 32 },   // Qualité
-      4: { halign: 'center', cellWidth: 23 }, // Couleur
-      5: { halign: 'right', cellWidth: 20 },  // PU HT
-      6: { halign: 'right', fontStyle: 'bold', cellWidth: 22 } // PT HT
+      0: { halign: 'left', cellWidth: 35 },
+      1: { halign: 'center', cellWidth: 12 },
+      2: { halign: 'center', cellWidth: 28 },
+      3: { halign: 'left', cellWidth: 32 },
+      4: { halign: 'center', cellWidth: 23 },
+      5: { halign: 'right', cellWidth: 20 },
+      6: { halign: 'right', fontStyle: 'bold', cellWidth: 22 }
     }
   })
 
