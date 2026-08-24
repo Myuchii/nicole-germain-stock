@@ -35,12 +35,12 @@ export async function getSupplierCatalog() {
   return { suppliers, items }
 }
 
-// Interface pour recevoir les choix précis de Jade depuis l'interface graphique
+// Interface pour recevoir les choix précis depuis l'interface graphique
 interface SelectedItemInput {
   reference: string
   name: string
   color: string
-  quantityWanted: number // Le métrage ou l'unité sur mesure saisi par Jade
+  quantityWanted: number // Le métrage ou l'unité sur mesure saisi
   source: string // "ALERTE ATELIER" ou le nom du Fournisseur
 }
 
@@ -58,7 +58,7 @@ export async function generateProcurementDocument(selectedItems: SelectedItemInp
       priceMap.set(item.reference.toUpperCase(), item.purchasePriceHT)
     })
 
-    // 2. On traite la liste des articles validés et ajustés par Jade
+    // 2. On traite la liste des articles validés et ajustés
     const finalLines = selectedItems.map(item => {
       // On cherche si on a le prix de cette référence dans le dictionnaire
       const lookupKeyWithSupplier = `${item.source}_${item.reference}`.toUpperCase()

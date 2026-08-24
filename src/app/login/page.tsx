@@ -37,9 +37,9 @@ const handleSubmit = async (e: React.FormEvent) => {
       if (role === "ADMIN") {
         router.push('/dashboard')
       } else if (role === "CONFECTION") {
-        router.push('/stock-atelier') // 🪡 Jade atterrit directement à l'atelier
+        router.push('/stock-atelier') //atterrir directement à l'atelier
       } else if (role === "BOUTIQUE") {
-        router.push('/stock-boutique') // 🏪 Betty atterrit directement à la boutique
+        router.push('/stock-boutique') //atterrir directement à la boutique
       } else {
         router.push('/dashboard')
       }
@@ -58,7 +58,7 @@ const handleSubmit = async (e: React.FormEvent) => {
       <div className="hidden lg:flex bg-slate-900 relative p-12 flex-col justify-between overflow-hidden">
         <div className="absolute inset-0 opacity-25 bg-[url('https://images.unsplash.com/photo-1558603668-6570496b66f8?q=80&w=1000')] bg-cover bg-center" />
         <div className="relative z-10">
-          <span className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3 py-1 rounded-full font-mono font-bold tracking-wider uppercase">ERP relAI</span>
+          <span className="text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3 py-1 rounded-full font-mono font-bold tracking-wider uppercase">ERP Nicole Germain</span>
           <h1 className="text-4xl font-serif font-bold text-white mt-6 leading-tight">L'excellence <br/>du geste.</h1>
         </div>
         <div className="relative z-10 text-slate-500 text-xs font-mono">

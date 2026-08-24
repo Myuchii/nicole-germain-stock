@@ -29,7 +29,6 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
     if (roleEnum === UserRole.ADMIN) {
       activeFeatures = Object.values(AppFeature)
     } else {
-      // Pour Jade et Betty, on va chercher leurs droits réels en BDD
       const permissions = await prisma.rolePermission.findMany({
         where: {
           role: roleEnum,

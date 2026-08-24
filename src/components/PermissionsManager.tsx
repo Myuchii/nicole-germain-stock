@@ -19,8 +19,8 @@ interface PermissionsManagerProps {
 
 const FEATURE_LABELS: Record<AppFeature, string> = {
   DASHBOARD: "📊 Tableau de bord principal",
-  STOCK_BOUTIQUE: "🏪 Gestion du Stock Boutique (Betty)",
-  STOCK_ATELIER: "📦 Réserve de Matières Premières Atelier (Jade)",
+  STOCK_BOUTIQUE: "🏪 Gestion du Stock Boutique",
+  STOCK_ATELIER: "📦 Réserve de Matières Premières Atelier",
   PRODUCTION: "🪡 Atelier de Production (Suivi des Chronos & Coupe)",
   QUOTES: "📜 Création & Chiffrage des Devis (Calculateur)", // 🆕 Elle est là !
   COMMANDES: "📝 Suivi des Commandes & Factures",
@@ -71,10 +71,10 @@ export default function PermissionsManager({ initialPermissions }: PermissionsMa
       <div className="flex justify-between items-start">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-indigo-600 font-black text-xs uppercase tracking-wider">
-            <Shield size={16} /> Matrice de sécurité relAI
+            <Shield size={16} /> Matrice de sécurité Nicole Germain
           </div>
           <h2 className="font-serif font-bold text-2xl text-slate-900">Droits d'accès de l'Atelier</h2>
-          <p className="text-xs text-slate-400">Configurez les modules accessibles pour Jade (Confection) et Betty (Boutique).</p>
+          <p className="text-xs text-slate-400">Configurez les modules accessibles pour la Confection et la Boutique.</p>
         </div>
 
         {isPending && (
@@ -98,8 +98,8 @@ export default function PermissionsManager({ initialPermissions }: PermissionsMa
           <thead>
             <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-wider">
               <th className="p-4">Fonctionnalité / Page</th>
-              <th className="p-4 text-center w-44 text-emerald-700 bg-emerald-50/30">🪡 CONFECTION (Jade)</th>
-              <th className="p-4 text-center w-44 text-blue-700 bg-blue-50/30">🏪 BOUTIQUE (Betty)</th>
+              <th className="p-4 text-center w-44 text-emerald-700 bg-emerald-50/30">🪡 CONFECTION</th>
+              <th className="p-4 text-center w-44 text-blue-700 bg-blue-50/30">🏪 BOUTIQUE</th>
               <th className="p-4 text-center w-36 bg-slate-100/50">👑 ADMIN</th>
             </tr>
           </thead>

@@ -24,7 +24,7 @@ for sheet_name in xls.sheet_names:
     clean_name = sheet_name.replace(" ", "_")
     csv_file_path = os.path.join(output_dir, f"{clean_name}.csv")
     
-    # Sauvegarder en CSV propre (Séparateur: Virgule, Encodage: UTF-8 pour Nicole et Betty)
+    # Sauvegarder en CSV propre (Séparateur: Virgule, Encodage: UTF-8)
     df.to_csv(csv_file_path, index=False, encoding='utf-8')
 
 print(f"🏁 Terminé ! Tes fichiers CSV sont disponibles dans : {output_dir}/")

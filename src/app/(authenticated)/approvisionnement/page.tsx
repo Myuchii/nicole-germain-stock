@@ -217,7 +217,7 @@ export default function ApprovisionnementPage() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h2 className="text-lg font-serif font-bold text-slate-900 flex items-center gap-2"><Truck size={20} className="text-indigo-500" /> 2. Catalogues & Grilles Tarifaires des Grossistes</h2>
-            <p className="text-slate-400 text-xs">Cochez vos articles pour l'Excel, ajustez les prix et le dictionnaire de couleurs de Jade en direct.</p>
+            <p className="text-slate-400 text-xs">Cochez vos articles pour l'Excel, ajustez les prix et le dictionnaire de couleurs en direct.</p>
           </div>
           
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
@@ -384,7 +384,7 @@ export default function ApprovisionnementPage() {
                   <input type="text" name="color" placeholder="Ex: Optical White" className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white focus:border-indigo-500 focus:outline-none placeholder:text-slate-600" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-indigo-300 font-bold uppercase tracking-wider text-[10px]">Couleur NG (Jade)</label>
+                  <label className="text-indigo-300 font-bold uppercase tracking-wider text-[10px]">Couleur NG </label>
                   <input type="text" name="ngColor" placeholder="Ex: Blanc Pur" className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white focus:border-indigo-400 focus:outline-none font-bold placeholder:text-indigo-400/60" />
                 </div>
               </div>

@@ -98,7 +98,7 @@ export async function createPartnerOrder(formData: FormData) {
       }
     })
 
-    // 4️⃣ Création de la ligne d'atelier pour Jade
+    // 4️⃣ Création de la ligne d'atelier
     await prisma.quoteItem.create({
       data: {
         quoteId: quote.id,

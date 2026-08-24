@@ -73,7 +73,7 @@ export async function recordSale(formData: FormData) {
         itemName = item.name
       }
 
-      // 🆕 CALCULS COMPTABLES POUR BETTY
+      // 🆕 CALCULS COMPTABLES 
       const unitPriceHT = quantity > 0 ? totalRevenueBaseHT / quantity : 0
       const finalTotalPriceHT = totalRevenueBaseHT * (1 - discountPercent / 100) // HT Remisé
       const finalTotalPriceTTC = finalTotalPriceHT * multiplier                  // TTC Remisé
