@@ -115,14 +115,39 @@ export default function ArchiveListClient({ initialOrders }: { initialOrders: an
                   </div>
                 </div>
 
-                {/* ITEMS INCLUS */}
+{/* ITEMS INCLUS */}
                 <div className="text-xs bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-1 mb-4">
-                  {order.items.map((item: any, idx: number) => (
-                    <div key={idx} className="text-slate-600 flex justify-between items-center">
-                      <span>🧵 {item.fabric?.name || item.customName || 'Article Libre'}</span>
-                      <span className="font-bold text-slate-400">{item.quantityMeters?.toFixed(1)}m</span>
-                    </div>
-                  ))}
+                  {order.items.map((item: any, idx: number) => {
+                    // 🎯 Petit dictionnaire pour traduire la famille en beau français
+                    const familyLabels: Record<string, string> = {
+                      FITTED: 'Drap Housse',
+                      ENVELOPE: 'Housse / Taie',
+                      FLAT: 'Drap Plat / Nappe',
+                      BOLSTER: 'Traversin',
+                      ROUND: 'Lit Rond',
+                      CUSTOM: 'Sur-mesure'
+                    };
+                    
+                    const typeName = familyLabels[item.family] || item.family || 'Article';
+
+                    return (
+                      <div key={idx} className="text-slate-600 flex justify-between items-center">
+                        <span className="truncate pr-2">
+                          🧵 {item.customName ? (
+                            // Si c'est du sur-mesure, on affiche le nom tapé à la main
+                            <span className="font-bold">{item.customName}</span>
+                          ) : (
+                            // Sinon, on affiche : "Drap Housse en Percale Blanche"
+                            <>
+                              <span className="font-bold">{typeName}</span> 
+                              {item.fabric?.name ? ` en ${item.fabric.name}` : ''}
+                            </>
+                          )}
+                        </span>
+                        <span className="font-bold text-slate-400 whitespace-nowrap">{item.quantityMeters?.toFixed(1)}m</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
