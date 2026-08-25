@@ -158,17 +158,6 @@ export default function ImportOrderModal({ onOrderImported }: { onOrderImported?
     <div className="p-6 bg-white rounded-3xl border border-slate-200 max-w-5xl mx-auto my-4 shadow-sm">
       <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2">📥 Import de Commande Nicole Germain</h2>
 
-      {!importMode && !formData && (
-        <div className="grid grid-cols-2 gap-4">
-          <button onClick={() => setImportMode('PDF')} className="p-6 border-2 border-dashed rounded-2xl flex flex-col items-center gap-2 hover:border-indigo-500 transition text-slate-600 font-bold text-sm">
-            <UploadCloud size={32} className="text-indigo-500" /> Glisser un fichier PDF
-          </button>
-          <button onClick={() => setImportMode('TEXT')} className="p-6 border-2 border-dashed rounded-2xl flex flex-col items-center gap-2 hover:border-indigo-500 transition text-slate-600 font-bold text-sm">
-            <FileText size={32} className="text-emerald-500" /> Copier-coller du texte brut (Word/Web)
-          </button>
-        </div>
-      )}
-
       {importMode === 'PDF' && !formData && (
         <div className="border-2 border-dashed border-indigo-300 rounded-2xl p-8 text-center relative cursor-pointer">
           <input type="file" accept="application/pdf" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />

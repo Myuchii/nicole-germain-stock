@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { AlertOctagon, UserX, Scissors, Truck, PackagePlus, Trash2 } from 'lucide-react'
 import { processCustomerReturn } from '@/app/_actions/quote-actions'
 
-// 🆕 Dictionnaire pour traduire le code technique en texte lisible pour Nicole
+// 🆕 Dictionnaire pour traduire le code technique en texte lisible
 const REASON_LABELS: Record<string, string> = {
   CLIENT_ERROR: "Erreur Client / Changement d'avis",
   NG_ERROR: "Défaut / Erreur Atelier (NG)",

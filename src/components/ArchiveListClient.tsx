@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Search, RotateCcw, Calendar, ShieldAlert } from 'lucide-react'
 import { unarchiveQuote } from '@/app/_actions/quote-actions'
-import ReturnSavModal from '@/components/ReturnSavModal' // 🆕 L'import de notre modal magique
+import ReturnSavModal from '@/components/ReturnSavModal' 
 
 export default function ArchiveListClient({ initialOrders }: { initialOrders: any[] }) {
   const [orders, setOrders] = useState(initialOrders)
@@ -11,7 +11,6 @@ export default function ArchiveListClient({ initialOrders }: { initialOrders: an
   const [filterReturn, setFilterReturn] = useState('ALL') 
   const [sortBy, setSortBy] = useState('NEWEST')
 
-  // 🆕 HYPER IMPORTANT : Met à jour la liste automatiquement quand le Modal SAV a fini son travail sur le serveur !
   useEffect(() => {
     setOrders(initialOrders)
   }, [initialOrders])
@@ -32,10 +31,10 @@ export default function ArchiveListClient({ initialOrders }: { initialOrders: an
     return matchesSearch && matchesReturn
   })
 
-  // 2. Tri par Date
+  // 2. Tri par Date (🎯 FIX : On utilise la date de validation de commande, ou de création si introuvable)
   const sortedOrders = [...filteredOrders].sort((a, b) => {
-    const dateA = new Date(a.createdAt).getTime()
-    const dateB = new Date(b.createdAt).getTime()
+    const dateA = new Date(a.validatedAt || a.createdAt).getTime()
+    const dateB = new Date(b.validatedAt || b.createdAt).getTime()
     return sortBy === 'NEWEST' ? dateB - dateA : dateA - dateB
   })
 
@@ -45,7 +44,6 @@ export default function ArchiveListClient({ initialOrders }: { initialOrders: an
     const res = await unarchiveQuote(id)
     if (res.success) {
       alert("🔄 Commande réactivée ! Elle est de nouveau visible dans l'Atelier.")
-      // Le useEffect s'occupera de rafraîchir la liste
     }
   }
 
@@ -65,7 +63,6 @@ export default function ArchiveListClient({ initialOrders }: { initialOrders: an
         </div>
 
         <div>
-          {/* 🛠️ Les "values" des options correspondent maintenant EXACTEMENT au texte de notre modal */}
           <select
             value={filterReturn}
             onChange={e => setFilterReturn(e.target.value)}
@@ -111,7 +108,10 @@ export default function ArchiveListClient({ initialOrders }: { initialOrders: an
                   </div>
                   <div className="text-right">
                     <p className="font-black text-slate-700 text-lg">{order.totalPrice.toFixed(2)} €</p>
-                    <p className="text-[10px] text-slate-400 flex items-center gap-1 justify-end"><Calendar size={12}/> {new Date(order.createdAt).toLocaleDateString('fr-FR')}</p>
+                    {/* 🎯 FIX : Affichage de la date de validation de commande */}
+                    <p className="text-[10px] text-slate-400 flex items-center gap-1 justify-end" title="Date de validation de la commande">
+                      <Calendar size={12}/> {new Date(order.validatedAt || order.createdAt).toLocaleDateString('fr-FR')}
+                    </p>
                   </div>
                 </div>
 
@@ -129,7 +129,6 @@ export default function ArchiveListClient({ initialOrders }: { initialOrders: an
               {/* MODULE SAV & ACTIONS */}
               <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-3 items-center justify-between">
                 
-                {/* 🆕 ICI ON PLACE NOTRE COMPOSANT MODAL */}
                 <div className="w-full sm:w-auto">
                   <ReturnSavModal 
                     quoteId={order.id} 

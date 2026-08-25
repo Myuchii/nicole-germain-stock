@@ -282,7 +282,7 @@ export async function getBoutiqueJDC(filters: AccountingFilter) {
     
     // Calcul mathématique du tiroir-caisse attendu en fin de journée
     d.especesAttendues = d.especesOuverture + d.encaissementEspeces - d.sorties
-    d.especesConstatees = d.especesAttendues // Par défaut synchrone, Nicole ajuste si écart
+    d.especesConstatees = d.especesAttendues // Par défaut synchrone, ajuster si écart
     d.difference = d.especesConstatees - d.especesAttendues
 
     return d

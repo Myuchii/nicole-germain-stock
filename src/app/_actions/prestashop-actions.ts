@@ -317,7 +317,7 @@ const psPaymentRaw = order.payment || 'Non renseigné'
             const secondColorName = dessousMatch[1].trim()
             const targetSecondName = `${matiere} - ${secondColorName}`
             
-            // On cherche le deuxième rouleau en DB pour Nicole
+            // On cherche le deuxième rouleau en DB 
             const foundSecondFabric = await prisma.fabric.findFirst({
               where: { name: { equals: targetSecondName, mode: 'insensitive' } }
             })
@@ -458,7 +458,7 @@ export async function syncAllPrestashopFabrics() {
 
     let createdCount = 0
 
-    // 3️⃣ Analyse croisée pour générer le magasin de tissus de Nicole
+    // 3️⃣ Analyse croisée pour générer le magasin de tissus
     for (const prod of psProducts) {
       const rawName = getPsValue(prod.name)
       if (!rawName) continue
