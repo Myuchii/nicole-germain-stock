@@ -104,7 +104,7 @@ export async function deleteFabric(id: string) {
         data: { isArchived: true }
       })
       
-      revalidatePath('/stock')
+      revalidatePath('/stock-atelier')
       return { success: true, message: "Le tissu étant lié à des commandes a été archivé pour préserver l'historique." }
     }
 
@@ -113,7 +113,7 @@ export async function deleteFabric(id: string) {
       where: { id }
     })
   
-    revalidatePath('/stock')
+    revalidatePath('/stock-atelier')
     return { success: true, message: "Le tissu a été définitivement supprimé de la base de données." }
   } catch (error) {
     console.error("Erreur suppression/archivage tissu:", error)
@@ -172,14 +172,14 @@ export async function deleteAccessory(id: string) {
         where: { id },
         data: { isArchived: true }
       })
-      revalidatePath('/stock')
+      revalidatePath('/stock-atelier')
       return { success: true, message: "Accessoire archivé (lié à des commandes)." }
     }
 
     await prisma.accessory.delete({
       where: { id }
     })
-    revalidatePath('/stock')
+    revalidatePath('/stock-atelier')
     return { success: true, message: "Accessoire supprimé avec succès." }
   } catch (error) {
     console.error("Erreur deleteAccessory:", error)
@@ -295,7 +295,7 @@ export async function changeLotLocation(
     }
 
     // On rafraîchit les deux pages pour que l'affichage soit immédiat
-    revalidatePath('/stock')
+    revalidatePath('/stock-atelier')
     revalidatePath('/stock-Boutique')
     
     return { success: true }
@@ -345,7 +345,7 @@ export async function adjustStockManually(formData: FormData) {
       }
     })
 
-    revalidatePath('/stock')
+    revalidatePath('/stock-atelier')
     return { success: true }
   } catch (error) {
     console.error("Erreur lors de l'ajustement du stock:", error)

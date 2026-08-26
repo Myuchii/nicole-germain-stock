@@ -86,7 +86,7 @@ export async function adjustProductStock(id: string, newTotalQuantity: number, t
       }
     }
 
-    revalidatePath('/boutique')
+    revalidatePath('/stock-boutique')
     return { success: true }
   } catch (error: any) {
     console.error("Erreur ajustement stock lots :", error)
@@ -106,7 +106,7 @@ export async function adjustProductPrice(id: string, newPriceHT: number) {
       data: { sellingPriceHT: newPriceHT }
     })
 
-    revalidatePath('/boutique')
+    revalidatePath('/stock-boutique')
     return { success: true }
   } catch (error) {
     console.error("Erreur ajustement prix :", error)

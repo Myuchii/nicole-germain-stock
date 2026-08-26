@@ -466,7 +466,7 @@ export async function cutItemInAtelier(itemId: string, useChute: boolean) {
     })
 
     revalidatePath('/atelier')
-    revalidatePath('/stock')
+    revalidatePath('/stock-atelier')
     return { success: true }
   } catch (error) {
     console.error('Erreur technique lors de la coupe à l’atelier:', error)
@@ -518,7 +518,7 @@ export async function deleteQuote(id: string, createPF: boolean = false) {
     
     revalidatePath('/quotes')
     revalidatePath('/commandes') 
-    revalidatePath('/stock')
+    revalidatePath('/stock-atelier')
     revalidatePath('/boutique') 
     
     return { success: true }
