@@ -258,8 +258,8 @@ export async function createOrUpdateAccessory(formData: FormData) {
     })
   }
 
-  revalidatePath('/stock')
-  redirect('/stock')
+  revalidatePath('/stock-atelier')
+  redirect('/stock-atelier')
 }
 
 // 🆕 ACTION UNIVERSELLE POUR LE FORMULAIRE D'AJOUT
