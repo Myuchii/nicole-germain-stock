@@ -98,7 +98,7 @@ export default async function DashboardPage({
   const nextPeriodUrl = `/dashboard?period=${period}&offset=${nextOffset}`
   const hasNextPeriod = offset > 0
 
-  // --- 2. REQUÊTES BDD (INCLUANT N-1) ---
+// --- 2. REQUÊTES BDD (INCLUANT N-1) ---
   const [
     periodQuotes,
     periodQuotesPrev, 
@@ -111,14 +111,17 @@ export default async function DashboardPage({
     returnedQuotesRaw
   ] = await Promise.all([
     prisma.quote.findMany({
-      where: { status: 'VALIDATED', validatedAt: { gte: startDate, lte: endDate } }, 
+      // 🟢 FIX : On inclut VALIDATED et ARCHIVED
+      where: { status: { in: ['VALIDATED', 'ARCHIVED'] }, validatedAt: { gte: startDate, lte: endDate } }, 
     }),
     prisma.quote.findMany({
-      where: { status: 'VALIDATED', validatedAt: { gte: startDatePrev, lte: endDatePrev } }, 
+      // 🟢 FIX : On inclut VALIDATED et ARCHIVED
+      where: { status: { in: ['VALIDATED', 'ARCHIVED'] }, validatedAt: { gte: startDatePrev, lte: endDatePrev } }, 
     }),
     prisma.client.findMany(),
     prisma.quoteItem.findMany({
-      where: { quote: { status: 'VALIDATED', validatedAt: { gte: startDate } } },
+      // 🟢 FIX : On inclut VALIDATED et ARCHIVED
+      where: { quote: { status: { in: ['VALIDATED', 'ARCHIVED'] }, validatedAt: { gte: startDate } } },
       include: { fabric: true, quote: true }
     }),
     prisma.fabric.findMany({ where: { isArchived: false } }),
