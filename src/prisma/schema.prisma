@@ -95,6 +95,8 @@ model Fabric {
   // 🟢 NOUVEAU : Double liaison avec QuoteItem pour Face A et Face B
   quoteItemsA           QuoteItem[] @relation("FabricA")
   quoteItemsB           QuoteItem[] @relation("FabricB")
+
+  supplierRef  String?
 }
 
 model FabricLot {
@@ -136,7 +138,9 @@ model AccessoryLot {
   createdAt        DateTime     @default(now())
 
   accessory        Accessory    @relation(fields: [accessoryId], references: [id], onDelete: Cascade)
+  supplierRef  String?
 }
+
 
 model StockMovement {
   id               String       @id @default(cuid())

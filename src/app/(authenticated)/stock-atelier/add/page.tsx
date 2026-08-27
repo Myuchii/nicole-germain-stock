@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { handleUniversalStockAdd } from '@/app/_actions/fabric-actions'
 import { Scissors, Paperclip } from 'lucide-react'
-import LocationSwitch from '@/components/LocationSwitch'
+// import LocationSwitch from '@/components/LocationSwitch' // (Si tu ne l'utilises pas, tu peux l'enlever)
 
 export default function AddStockPage() {
   const [itemType, setItemType] = useState<'TISSU' | 'ACCESSOIRE'>('TISSU')
@@ -37,10 +37,15 @@ export default function AddStockPage() {
         {/* 📝 CHAMPS COMMUNS */}
         <div className="grid grid-cols-2 gap-6">
           <div className="space-y-2">
-            <label className="text-sm font-bold text-slate-700">Référence</label>
+            <label className="text-sm font-bold text-slate-700">Référence Interne</label>
             <input name="reference" placeholder={itemType === 'TISSU' ? "ex: SOIE-001" : "ex: ZIP-INV-40"} className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" required />
           </div>
+          {/* 🟢 NOUVEAU CHAMP : RÉFÉRENCE FOURNISSEUR */}
           <div className="space-y-2">
+            <label className="text-sm font-bold text-slate-700">Réf. Fournisseur <span className="text-slate-400 font-normal">(Optionnel)</span></label>
+            <input name="supplierRef" placeholder="ex: TEX-8992-BL" className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div className="space-y-2 col-span-2">
             <label className="text-sm font-bold text-slate-700">Désignation</label>
             <input name="name" placeholder={itemType === 'TISSU' ? "ex: Satin de Soie" : "ex: Fermeture Éclair Invisible"} className="w-full p-3 bg-slate-50 placeholder-slate-400 rounded-xl border-none focus:ring-2 focus:ring-indigo-500" required />
           </div>
