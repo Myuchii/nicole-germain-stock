@@ -112,22 +112,23 @@ model FabricLot {
 }
 
 model Accessory {
-  id               String         @id @default(cuid())
-  reference        String         @unique
-  name             String
-  category         String         // ex: "Fermeture Éclair", "Bobine de fil"
-  stockQuantity    Float          @default(0)
-  unit             UnitType       @default(UNIT)
-  alertThreshold   Float          @default(10)
-  pricePerUnit     Float          @default(0)
-  isArchived       Boolean        @default(false)
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id              String   @id @default(cuid())
+  reference       String   @unique
+  name            String
+  category        String
+  supplierRef     String?  // 🟢 VÉRIFIE QUE CETTE LIGNE EST BIEN LÀ !
+  
+  stockQuantity   Float    @default(0)
+  pricePerUnit    Float    @default(0)
+  unit            String   @default("UNIT")
+  alertThreshold  Float?
+  isArchived      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  lots             AccessoryLot[]
-  quoteItems       QuoteItem[]
+  lots            AccessoryLot[]
+  QuoteItem       QuoteItem[]
 }
-
 model AccessoryLot {
   id               String       @id @default(cuid())
   accessoryId      String
