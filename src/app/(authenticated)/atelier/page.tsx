@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma'
 import { Scissors, Shirt, Package, Layers, AlertTriangle, Palette, ArrowLeft, Filter } from 'lucide-react'
 import ProductionCard from '@/components/ProductionCard'
-import { validateCuttingStep, rollbackToCouture, rollbackToCutting, linkFabricToItem } from '@/app/_actions/atelier-actions'
+import { validateCuttingStep, validateGlobalCut, rollbackToCouture, rollbackToCutting, linkFabricToItem } from '@/app/_actions/atelier-actions'
 import { getAtelierSettings } from '@/app/_actions/settings-actions' 
 import SyncWebButton from '@/components/SyncWebButton'
 import BulkCutForm from '@/components/BulkCutForm'
@@ -377,6 +377,7 @@ items.filter(i => i.statusProduction === 'A_COUPER').forEach(item => {
                 const distinctFabrics = Array.from(new Set(group.itemsList.map((i: any) => i.fabric?.reference || 'SUR-MESURE')))
                 const distinctColors = Array.from(new Set(group.itemsList.map((i: any) => i.fabric?.color || 'Standard')))
                 const isMultiTissus = distinctFabrics.length > 1
+                const groupHasBicolor = group.itemsList.some((item: any) => !!parsePrestashopProductLocal(item.customName || item.fabric?.name || '').dualColorsLabel)
 
                 return (
                   <div key={idx} className={`bg-white p-5 rounded-2xl border shadow-sm space-y-4 ${isMultiCut ? 'border-indigo-300 ring-2 ring-indigo-500/5 bg-indigo-50/5' : 'border-slate-100'}`}>
@@ -411,7 +412,50 @@ items.filter(i => i.statusProduction === 'A_COUPER').forEach(item => {
                       </div>
                     )}
 
-                    {isMultiCut && <BulkCutForm itemIds={group.itemsList.map((item: any) => item.id)} count={group.itemsList.length} />}
+                    {/* 🟢 AJOUT PUR DU FORMULAIRE GLOBAL ICI */}
+                    {isMultiCut && (
+                      <form action={validateGlobalCut} className="p-3 bg-indigo-50/50 border border-indigo-200 rounded-xl flex flex-col gap-2 shadow-sm mb-2">
+                        <div className="text-[10px] font-black text-indigo-800 uppercase flex items-center gap-1">
+                          <Layers size={12} /> Traiter le lot complet ({group.itemsList.length} articles)
+                        </div>
+                        
+                        {group.itemsList.map((item: any) => (
+                          <input key={`g-${item.id}`} type="hidden" name="itemIds" value={item.id} />
+                        ))}
+
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                          {groupHasBicolor && <span className="shrink-0 text-[10px] font-bold text-slate-500 w-10 text-right hidden sm:block">FACE A</span>}
+                          <select name="globalFabricId" className="flex-1 w-full sm:w-auto text-xs p-1.5 bg-white border border-indigo-200 rounded-md font-bold text-slate-700 outline-none" required>
+                            <option value="">Sélectionner le rouleau (Lot entier)...</option>
+                            {availableFabrics.map((f: any) => <option key={f.id} value={f.id}>{f.reference} - {f.name}</option>)}
+                          </select>
+                          <div className="flex items-center gap-1">
+                            <input type="number" step="0.05" name="globalMetersA" defaultValue={totalMeters.toFixed(2)} className="w-16 p-1.5 text-center text-xs font-black text-indigo-600 rounded-md border border-indigo-200" required />
+                            <span className="text-indigo-400 font-bold text-[10px]">m</span>
+                          </div>
+                        </div>
+
+                        {groupHasBicolor && (
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                            <span className="shrink-0 text-[10px] font-bold text-amber-500 w-10 text-right hidden sm:block">FACE B</span>
+                            <select name="globalFabricBId" className="flex-1 w-full sm:w-auto text-xs p-1.5 bg-amber-50 border border-amber-200 rounded-md font-bold text-slate-700 outline-none" required>
+                              <option value="">Sélectionner le 2ème rouleau (Lot entier)...</option>
+                              {availableFabrics.map((f: any) => <option key={f.id} value={f.id}>{f.reference} - {f.name}</option>)}
+                            </select>
+                            <div className="flex items-center gap-1">
+                              <input type="number" step="0.05" name="globalMetersB" placeholder="0.00" className="w-16 p-1.5 text-center text-xs font-black text-amber-600 rounded-md border border-indigo-200" required />
+                              <span className="text-amber-400 font-bold text-[10px]">m</span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex justify-end mt-1">
+                          <button type="submit" className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-lg shadow-sm transition-transform hover:scale-105">
+                            ✂️ Couper ce lot globalement
+                          </button>
+                        </div>
+                      </form>
+                    )}
 
                     <div className="space-y-3 border-t border-slate-100 pt-3">
                       {group.itemsList.map((item: any) => {
@@ -421,7 +465,7 @@ items.filter(i => i.statusProduction === 'A_COUPER').forEach(item => {
                         return (
                           <div key={item.id} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex flex-col gap-3 shadow-sm">
                             
-{/* FORMULAIRE : SÉLECTION DES TISSUS */}
+                            {/* FORMULAIRE : SÉLECTION DES TISSUS */}
                             <form action={linkFabricToItem} className="flex flex-col gap-2 border-b border-slate-200/60 pb-3 w-full">
                               <div className="flex justify-between items-center gap-2 w-full">
                                 <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider truncate">
@@ -477,7 +521,7 @@ items.filter(i => i.statusProduction === 'A_COUPER').forEach(item => {
                             <form action={validateCuttingStep} className="flex flex-col gap-3 text-xs">
                               <input type="hidden" name="itemId" value={item.id} />
                               
-<div className="flex justify-between items-start gap-2">
+                              <div className="flex justify-between items-start gap-2">
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2 mb-0.5">
                                     <span className="font-mono text-indigo-600 font-bold">{item.quote.reference}</span>
@@ -490,7 +534,7 @@ items.filter(i => i.statusProduction === 'A_COUPER').forEach(item => {
                                       const files = JSON.parse(item.blueprintUrl)
                                       if (files.doc || files.schema) {
                                         return (
-<div className="flex flex-wrap items-center gap-2 mt-2">
+                                          <div className="flex flex-wrap items-center gap-2 mt-2">
                                             {/* 🟢 S'il y a le nouveau tableau "docs", on boucle dessus */}
                                             {files.docs && files.docs.length > 0 ? (
                                               files.docs.map((url: string, index: number) => (

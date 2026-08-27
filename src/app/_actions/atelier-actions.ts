@@ -14,6 +14,7 @@ export async function startCoutureChrono(itemId: string) {
   })
   revalidatePath('/atelier')
 }
+
 export async function advanceProductionStep(itemId: string, currentStep: string, realMeters?: number) {
   let nextStep = 'A_COUPER'
   let dataUpdate: any = {}
@@ -72,6 +73,10 @@ export async function validateCuttingStep(formData: FormData) {
   const realMetersRawA = formData.get('realMetersA') as string // 🎯 Champ pour Tissu A
   const realMetersRawB = formData.get('realMetersB') as string // 🎯 Champ pour Tissu B
   const isChuteString = formData.get('isChute') as string
+  
+  // 🟢 AJOUT : Récupération des tissus depuis le formulaire (s'ils ont été changés)
+  const newFabricId = formData.get('fabricId') as string
+  const newFabricBId = formData.get('fabricBId') as string
 
   if (!itemId) return
 
@@ -94,14 +99,20 @@ export async function validateCuttingStep(formData: FormData) {
       const finalMetersA = realMetersA !== undefined && !isNaN(realMetersA) ? realMetersA : (item.quantityMeters || 0)
       const finalMetersB = realMetersB !== undefined && !isNaN(realMetersB) ? realMetersB : (item.quantityMetersB || 0)
       
+      // On prend le nouveau tissu si renseigné, sinon on garde l'ancien
+      const finalFabricId = newFabricId || item.fabricId
+      const finalFabricBId = newFabricBId || item.fabricBId
+
       // Mise à jour de l'article pour le passer en couture et enregistrer les VRAIS métrages
       let dataUpdate: any = {
         statusProduction: 'EN_COUTURE',
         isChute: useChute,
-        quantityMeters: finalMetersA
+        quantityMeters: finalMetersA,
+        fabricId: finalFabricId // On sauvegarde le tissu au passage
       }
 
-      if (item.fabricBId) {
+      if (finalFabricBId) {
+        dataUpdate.fabricBId = finalFabricBId
         dataUpdate.quantityMetersB = finalMetersB 
       }
 
@@ -114,15 +125,15 @@ export async function validateCuttingStep(formData: FormData) {
       if (!useChute) {
         
         // --- 🧵 TISSU A (Principal) ---
-        if (item.fabricId && finalMetersA > 0) {
+        if (finalFabricId && finalMetersA > 0) {
           await tx.fabric.update({
-            where: { id: item.fabricId },
+            where: { id: finalFabricId },
             data: { stockMeters: { decrement: finalMetersA } }
           })
           
           await tx.stockMovement.create({
             data: { 
-              fabricId: item.fabricId, 
+              fabricId: finalFabricId, 
               type: "EXIT", 
               quantityMeters: finalMetersA, 
               reason: `Coupe Rouleau Face A - Cmd ${item.quote.reference}` 
@@ -131,15 +142,15 @@ export async function validateCuttingStep(formData: FormData) {
         }
 
         // --- 🧵 TISSU B (Secondaire) ---
-        if (item.fabricBId && finalMetersB > 0) {
+        if (finalFabricBId && finalMetersB > 0) {
           await tx.fabric.update({
-            where: { id: item.fabricBId },
+            where: { id: finalFabricBId },
             data: { stockMeters: { decrement: finalMetersB } }
           })
           
           await tx.stockMovement.create({
             data: { 
-              fabricId: item.fabricBId, 
+              fabricId: finalFabricBId, 
               type: "EXIT", 
               quantityMeters: finalMetersB, 
               reason: `Coupe Rouleau Face B - Cmd ${item.quote.reference}` 
@@ -149,14 +160,14 @@ export async function validateCuttingStep(formData: FormData) {
 
       } else if (useChute) {
         // En cas de chute, on trace juste la conso mais on ne touche pas au stock principal
-        if (item.fabricId && finalMetersA > 0) {
+        if (finalFabricId && finalMetersA > 0) {
           await tx.stockMovement.create({
-            data: { fabricId: item.fabricId, type: "EXIT", quantityMeters: finalMetersA, reason: `Coupe CHUTE Face A - Cmd ${item.quote.reference}` }
+            data: { fabricId: finalFabricId, type: "EXIT", quantityMeters: finalMetersA, reason: `Coupe CHUTE Face A - Cmd ${item.quote.reference}` }
           })
         }
-        if (item.fabricBId && finalMetersB > 0) {
+        if (finalFabricBId && finalMetersB > 0) {
           await tx.stockMovement.create({
-            data: { fabricId: item.fabricBId, type: "EXIT", quantityMeters: finalMetersB, reason: `Coupe CHUTE Face B - Cmd ${item.quote.reference}` }
+            data: { fabricId: finalFabricBId, type: "EXIT", quantityMeters: finalMetersB, reason: `Coupe CHUTE Face B - Cmd ${item.quote.reference}` }
           })
         }
       }
@@ -169,7 +180,6 @@ export async function validateCuttingStep(formData: FormData) {
     console.error('Erreur lors du traitement de la coupe atelier :', error)
   }
 }
-
 
 // 2. 🆕 NOUVELLE ACTION : Déclenchement manuel du chrono de couture par l'artisan
 export async function startSewingStep(formData: FormData) {
@@ -268,68 +278,100 @@ export async function rollbackToCouture(formData: FormData) {
   }
 }
 
+// 🟢 3. NOUVELLE ACTION : Validation en lot (Clone de l'action individuelle, mais en boucle)
 export async function validateBulkCuttingStep(formData: FormData) {
   const itemIds = formData.getAll('itemIds') as string[]
 
+  if (!itemIds || itemIds.length === 0) return { success: false, error: "Aucun article" }
+
   try {
-    const items = await prisma.quoteItem.findMany({
-      where: { id: { in: itemIds } },
-      include: { quote: true } // On inclut la quote pour avoir la référence dans l'historique
-    })
-
     await prisma.$transaction(async (tx) => {
-      // 1. On boucle sur chaque article pour déduire les BONS rouleaux
-      for (const item of items) {
-        const meters = Number(item.quantityMeters) || 0
-        const metersB = Number((item as any).quantityMetersB) || 0
+      for (const itemId of itemIds) {
+        
+        // On récupère les valeurs pour cet article précis depuis le formulaire global
+        const realMetersRawA = formData.get(`realMetersA_${itemId}`) as string
+        const realMetersRawB = formData.get(`realMetersB_${itemId}`) as string
+        const fabricId = formData.get(`fabricId_${itemId}`) as string
+        const fabricBId = formData.get(`fabricBId_${itemId}`) as string
+        
+        // Par défaut sur un lot on coupe dans le rouleau
+        const useChute = false 
 
-        // 🧵 Déduction Face A
-        if (item.fabricId && meters > 0) {
+        const realMetersA = realMetersRawA ? parseFloat(realMetersRawA.replace(',', '.')) : undefined
+        const realMetersB = realMetersRawB ? parseFloat(realMetersRawB.replace(',', '.')) : undefined
+
+        const item = await tx.quoteItem.findUnique({
+          where: { id: itemId },
+          include: { quote: true }
+        })
+
+        // On vérifie que l'article existe bien et n'a pas déjà été coupé (sécurité double clic)
+        if (!item || item.statusProduction !== 'A_COUPER') continue;
+
+        const finalMetersA = realMetersA !== undefined && !isNaN(realMetersA) ? realMetersA : (item.quantityMeters || 0)
+        const finalMetersB = realMetersB !== undefined && !isNaN(realMetersB) ? realMetersB : (item.quantityMetersB || 0)
+        
+        const finalFabricId = fabricId || item.fabricId
+        const finalFabricBId = fabricBId || item.fabricBId
+
+        // Mise à jour de l'article pour le passer en couture et enregistrer les VRAIS métrages
+        let dataUpdate: any = {
+          statusProduction: 'EN_COUTURE',
+          isChute: useChute,
+          quantityMeters: finalMetersA,
+          fabricId: finalFabricId
+        }
+
+        if (finalFabricBId) {
+          dataUpdate.fabricBId = finalFabricBId
+          dataUpdate.quantityMetersB = finalMetersB 
+        }
+
+        await tx.quoteItem.update({
+          where: { id: itemId },
+          data: dataUpdate
+        })
+
+        // ✂️ GESTION DU STOCK POUR LES DEUX ROULEAUX SÉPARÉMENT
+        if (finalFabricId && finalMetersA > 0) {
           await tx.fabric.update({
-            where: { id: item.fabricId },
-            data: { stockMeters: { decrement: meters } }
+            where: { id: finalFabricId },
+            data: { stockMeters: { decrement: finalMetersA } }
           })
           await tx.stockMovement.create({
-            data: {
-              fabricId: item.fabricId,
-              type: "EXIT",
-              quantityMeters: meters,
-              reason: `Multi-Coupe (Groupée) - Cmd ${item.quote?.reference || item.quoteId}`
+            data: { 
+              fabricId: finalFabricId, 
+              type: "EXIT", 
+              quantityMeters: finalMetersA, 
+              reason: `Coupe Lot Face A - Cmd ${item.quote.reference}` 
             }
           })
         }
 
-        // 🧵 Déduction Face B (si l'article est bicolore)
-        if (item.fabricBId && metersB > 0) {
+        if (finalFabricBId && finalMetersB > 0) {
           await tx.fabric.update({
-            where: { id: item.fabricBId },
-            data: { stockMeters: { decrement: metersB } }
+            where: { id: finalFabricBId },
+            data: { stockMeters: { decrement: finalMetersB } }
           })
           await tx.stockMovement.create({
-            data: {
-              fabricId: item.fabricBId,
-              type: "EXIT",
-              quantityMeters: metersB,
-              reason: `Multi-Coupe Face B (Groupée) - Cmd ${item.quote?.reference || item.quoteId}`
+            data: { 
+              fabricId: finalFabricBId, 
+              type: "EXIT", 
+              quantityMeters: finalMetersB, 
+              reason: `Coupe Lot Face B - Cmd ${item.quote.reference}` 
             }
           })
         }
       }
-
-      // 2. On bascule toutes les fiches d'un coup en couture
-      await tx.quoteItem.updateMany({
-        where: { id: { in: itemIds } },
-        data: {
-          statusProduction: 'EN_COUTURE'
-        }
-      })
     })
 
     revalidatePath('/atelier')
+    revalidatePath('/dashboard')
+    
     return { success: true }
   } catch (error) {
-    console.error("Erreur validation groupée :", error)
-    return { success: false, error: "Impossible de valider le lot." }
+    console.error('Erreur lors de la coupe en lot :', error)
+    return { success: false, error: "Erreur technique" }
   }
 }
 
@@ -406,5 +448,60 @@ export async function togglePaymentStatus(formData: FormData) {
     revalidatePath('/atelier')
   } catch (error) {
     console.error("Erreur lors de la validation du paiement :", error)
+  }
+}
+
+// 🟢 NOUVEAU : Validation Globale du lot (Gère Face A et Face B)
+export async function validateGlobalCut(formData: FormData) {
+  const itemIds = formData.getAll('itemIds') as string[]
+  const globalFabricId = formData.get('globalFabricId') as string
+  const globalFabricBId = formData.get('globalFabricBId') as string
+  
+  const globalMetersA = parseFloat((formData.get('globalMetersA') as string)?.replace(',', '.')) || 0
+  const globalMetersB = parseFloat((formData.get('globalMetersB') as string)?.replace(',', '.')) || 0
+
+  if (!itemIds.length || !globalFabricId) return
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // 1. On déduit les stocks GLOBALEMENT une seule fois
+      if (globalMetersA > 0) {
+        await tx.fabric.update({ where: { id: globalFabricId }, data: { stockMeters: { decrement: globalMetersA } } })
+        await tx.stockMovement.create({
+          data: { fabricId: globalFabricId, type: "EXIT", quantityMeters: globalMetersA, reason: `Coupe globale lot (${itemIds.length} pcs)` }
+        })
+      }
+      if (globalFabricBId && globalMetersB > 0) {
+        await tx.fabric.update({ where: { id: globalFabricBId }, data: { stockMeters: { decrement: globalMetersB } } })
+        await tx.stockMovement.create({
+          data: { fabricId: globalFabricBId, type: "EXIT", quantityMeters: globalMetersB, reason: `Coupe globale lot Face B (${itemIds.length} pcs)` }
+        })
+      }
+
+      // 2. On divise les mètres pour l'historique et on passe tout en couture
+      const metersPerItemA = globalMetersA / itemIds.length
+      const metersPerItemB = globalMetersB / itemIds.length
+
+      let dataUpdate: any = {
+        statusProduction: 'EN_COUTURE',
+        fabricId: globalFabricId,
+        isChute: false,
+        quantityMeters: metersPerItemA
+      }
+      if (globalFabricBId) {
+        dataUpdate.fabricBId = globalFabricBId
+        dataUpdate.quantityMetersB = metersPerItemB
+      }
+
+      await tx.quoteItem.updateMany({
+        where: { id: { in: itemIds } },
+        data: dataUpdate
+      })
+    })
+
+    revalidatePath('/atelier')
+    revalidatePath('/dashboard')
+  } catch (error) {
+    console.error("Erreur coupe globale :", error)
   }
 }

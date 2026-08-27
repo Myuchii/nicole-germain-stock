@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { generateQuotePDF } from '@/lib/pdf-generator'
 import { Printer, Trash2, Archive, CheckCircle, Wallet } from 'lucide-react'
-// 🟢 Ajout de updateOrderPrice dans les imports
 import { deleteQuote, archiveQuote, updateOrderPrice } from '@/app/_actions/quote-actions'
 import { togglePaymentStatus } from '@/app/_actions/atelier-actions'
 
@@ -36,7 +35,7 @@ interface Order {
     prodTimeMinutes: number
     sellingPrice: number | null
     quantityUnits: number | null
-    blueprintUrl?: string | null // 🟢 AJOUT : Pour lire les plans joints
+    blueprintUrl?: string | null 
   }>
 }
 
@@ -148,13 +147,12 @@ export function OrderCard({ order }: { order: Order }) {
             Validée le {order.validatedAt ? new Date(order.validatedAt).toLocaleDateString('fr-FR') : 'N/A'}
           </p>
         </div>
-<div className="text-right ml-4 shrink-0">
+        <div className="text-right ml-4 shrink-0">
           <p className="text-3xl font-black text-emerald-600">
             {order.totalPrice.toFixed(2)} <span className="text-lg font-normal">€</span>
           </p>
           <div className="flex flex-col items-end gap-1 mt-1">
             <p className="text-xs text-slate-500">{order.quantity.toFixed(1)}m</p>
-            {/* 🟢 Le badge du moyen de paiement */}
             {order.paymentMethod && (
               <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-black uppercase tracking-wider border border-slate-200 shadow-sm">
                 💳 {order.paymentMethod}
@@ -164,90 +162,114 @@ export function OrderCard({ order }: { order: Order }) {
         </div>
       </div>
 
-      {/* PRODUITS */}
+      {/* PRODUITS (AVEC REGROUPEMENT) */}
       <div className="space-y-3 mb-6 flex-1">
-        {order.items.map((item, index) => {
-          // 🟢 1. Parsing sécurisé des fichiers joints
-          let files: any = null
-          if (item.blueprintUrl) {
-            try { files = JSON.parse(item.blueprintUrl) } catch (e) {}
-          }
+        {(() => {
+          // 🟢 1. LOGIQUE DE FUSION DES ARTICLES IDENTIQUES
+          const groupedItems = order.items.reduce((acc: any[], item: any) => {
+            const key = `${item.customName || 'STANDARD'}-${item.fabric?.id || 'SANS_TISSU'}`
+            const existing = acc.find(i => i.key === key)
+            
+            const qty = item.quantityUnits || 1
+            const meters = item.quantityMeters || 0
+            const time = item.prodTimeMinutes || 0
+            const price = item.sellingPrice || 0
 
-          return (
-            <div key={index} className="flex flex-col p-4 bg-slate-50 rounded-2xl group-hover:bg-indigo-50/60 transition-colors border border-slate-100">
-              
-              <div className="flex justify-between items-start">
-                <div className="flex-1 pr-4">
-                  <div className="font-bold text-slate-800 text-sm leading-snug">
-                    {item.customName || item.fabric?.name || 'Article Libre'}
-                  </div>
+            if (existing) {
+              existing.qty += qty
+              existing.meters += meters
+              existing.time += time
+              existing.price += price
+            } else {
+              acc.push({ ...item, key, qty, meters, time, price })
+            }
+            return acc
+          }, [])
+
+          // 🟢 2. AFFICHAGE DES ARTICLES REGROUPÉS
+          return groupedItems.map((item: any, index: number) => {
+            let files: any = null
+            if (item.blueprintUrl) {
+              try { files = JSON.parse(item.blueprintUrl) } catch (e) {}
+            }
+
+            return (
+              <div key={index} className="flex flex-col p-4 bg-slate-50 rounded-2xl group-hover:bg-indigo-50/60 transition-colors border border-slate-100">
+                <div className="flex justify-between items-start">
                   
-                  <div className="text-[11px] text-slate-400 font-medium mt-1 flex items-center gap-1">
-                    <span className="px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded-md font-bold text-[10px]">
-                      {item.fabric?.reference || 'SUR-MESURE'}
-                    </span>
-                    • {item.fabric?.name || 'Aucun tissu lié'}
-                  </div>
-                </div>
-                
-                <div className="text-right whitespace-nowrap">
-                  {/* 🟢 2. Le mini-formulaire pour chiffrer les commandes CC */}
-                  {order.reference.startsWith('CC-') ? (
-                    <form action={async (formData) => {
-                      const newPrice = parseFloat(formData.get('price') as string)
-                      if (!isNaN(newPrice)) {
-                        await updateOrderPrice(order.id, newPrice) 
-                      }
-                    }} className="flex items-center justify-end gap-1 mb-1">
-                      <input 
-                        type="number" 
-                        name="price"
-                        step="0.01"
-                        defaultValue={item.sellingPrice || order.totalPrice || ''}
-                        placeholder="0.00"
-                        className="w-20 px-2 py-1 text-right text-sm font-black text-emerald-600 border border-emerald-200 bg-emerald-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm"
-                      />
-                      <span className="text-emerald-600 font-black">€</span>
-                      <button type="submit" className="hidden">Ok</button>
-                    </form>
-                  ) : (
-                    <div className="font-black text-emerald-600 text-base">
-                      {item.sellingPrice?.toFixed(2)}€
+                  <div className="flex-1 pr-4">
+                    <div className="font-bold text-slate-800 text-sm leading-snug flex items-start gap-2">
+                      {/* LE BADGE DE QUANTITÉ */}
+                      <span className="font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md text-xs whitespace-nowrap">
+                        {item.qty}x
+                      </span>
+                      <span>{item.customName || item.fabric?.name || 'Article Libre'}</span>
                     </div>
-                  )}
+                    
+                    <div className="text-[11px] text-slate-400 font-medium mt-1 flex items-center gap-1">
+                      <span className="px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded-md font-bold text-[10px]">
+                        {item.fabric?.reference || 'SUR-MESURE'}
+                      </span>
+                      • {item.fabric?.name || 'Aucun tissu lié'}
+                    </div>
+                  </div>
                   
-                  <div className="text-[11px] font-medium text-slate-400 mt-0.5">
-                    {item.quantityMeters?.toFixed(1)}m | {item.prodTimeMinutes}min
+                  <div className="text-right whitespace-nowrap">
+                    {order.reference.startsWith('CC-') ? (
+                      <form action={async (formData) => {
+                        const newPrice = parseFloat(formData.get('price') as string)
+                        if (!isNaN(newPrice)) {
+                          await updateOrderPrice(order.id, newPrice) 
+                        }
+                      }} className="flex items-center justify-end gap-1 mb-1">
+                        <input 
+                          type="number" 
+                          name="price"
+                          step="0.01"
+                          defaultValue={item.price || order.totalPrice || ''}
+                          placeholder="0.00"
+                          className="w-20 px-2 py-1 text-right text-sm font-black text-emerald-600 border border-emerald-200 bg-emerald-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm"
+                        />
+                        <span className="text-emerald-600 font-black">€</span>
+                        <button type="submit" className="hidden">Ok</button>
+                      </form>
+                    ) : (
+                      <div className="font-black text-emerald-600 text-base">
+                        {item.price?.toFixed(2)}€
+                      </div>
+                    )}
+                    
+                    <div className="text-[11px] font-medium text-slate-400 mt-0.5">
+                      {item.meters?.toFixed(1)}m | {item.time}min
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* 🟢 3. Affichage des multiples Bons et du Schéma */}
-              {files && (
-                <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-200/60 mt-2">
-                  {files.docs && files.docs.length > 0 ? (
-                    files.docs.map((url: string, i: number) => (
-                      <a key={i} href={`/api/documents?url=${url}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold transition-colors">
-                        📄 Bon {files.docs.length > 1 ? `#${i + 1}` : ''}
+                {files && (
+                  <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-200/60 mt-2">
+                    {files.docs && files.docs.length > 0 ? (
+                      files.docs.map((url: string, i: number) => (
+                        <a key={i} href={`/api/documents?url=${url}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold transition-colors">
+                          📄 Bon {files.docs.length > 1 ? `#${i + 1}` : ''}
+                        </a>
+                      ))
+                    ) : files.doc && (
+                      <a href={`/api/documents?url=${files.doc}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold transition-colors">
+                        📄 Voir le Bon
                       </a>
-                    ))
-                  ) : files.doc && (
-                    <a href={`/api/documents?url=${files.doc}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold transition-colors">
-                      📄 Voir le Bon
-                    </a>
-                  )}
-                  
-                  {files.schema && (
-                    <a href={`/api/documents?url=${files.schema}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold transition-colors">
-                      📐 Voir le Schéma
-                    </a>
-                  )}
-                </div>
-              )}
-
-            </div>
-          )
-        })}
+                    )}
+                    
+                    {files.schema && (
+                      <a href={`/api/documents?url=${files.schema}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold transition-colors">
+                        📐 Voir le Schéma
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })
+        })()}
       </div>
 
       {/* ZONE PAIEMENT ET ACTIONS */}
