@@ -42,6 +42,9 @@ interface Order {
 export function OrderCard({ order }: { order: Order }) {
   const [isPending, setIsPending] = useState(false)
 
+  // 🟢 Calcul automatique du total des articles TTC (hors frais de port)
+  const totalArticlesTTC = order.items.reduce((sum, item) => sum + (item.sellingPrice || 0), 0)
+
   const handleDownloadPDF = async () => {
     const products = order.items.map(item => {
       const isCustom = !item.fabric || !!item.customName
@@ -134,7 +137,7 @@ export function OrderCard({ order }: { order: Order }) {
   return (
     <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all group flex flex-col h-full">
       
-      {/* EN-TÊTE */}
+      {/* EN-TÊTE : PRIX TOTAL GLOBAL (AVEC FRAIS DE PORT EN HAUT) */}
       <div className="flex justify-between items-start mb-6">
         <div>
           <h2 className="text-2xl font-black text-slate-800 group-hover:text-indigo-600 transition-colors">
@@ -165,7 +168,6 @@ export function OrderCard({ order }: { order: Order }) {
       {/* PRODUITS (AVEC REGROUPEMENT) */}
       <div className="space-y-3 mb-6 flex-1">
         {(() => {
-          // 🟢 1. LOGIQUE DE FUSION DES ARTICLES IDENTIQUES
           const groupedItems = order.items.reduce((acc: any[], item: any) => {
             const key = `${item.customName || 'STANDARD'}-${item.fabric?.id || 'SANS_TISSU'}`
             const existing = acc.find(i => i.key === key)
@@ -186,7 +188,6 @@ export function OrderCard({ order }: { order: Order }) {
             return acc
           }, [])
 
-          // 🟢 2. AFFICHAGE DES ARTICLES REGROUPÉS
           return groupedItems.map((item: any, index: number) => {
             let files: any = null
             if (item.blueprintUrl) {
@@ -199,7 +200,6 @@ export function OrderCard({ order }: { order: Order }) {
                   
                   <div className="flex-1 pr-4">
                     <div className="font-bold text-slate-800 text-sm leading-snug flex items-start gap-2">
-                      {/* LE BADGE DE QUANTITÉ */}
                       <span className="font-black text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-md text-xs whitespace-nowrap">
                         {item.qty}x
                       </span>
@@ -273,7 +273,14 @@ export function OrderCard({ order }: { order: Order }) {
       </div>
 
       {/* ZONE PAIEMENT ET ACTIONS */}
-      <div className="space-y-3 mt-auto">
+      <div className="space-y-3 mt-auto pt-3 border-t border-slate-100">
+        
+        {/* 🟢 TOTAL ARTICLES TTC (EN BAS DE CARTE) */}
+        <div className="flex justify-between items-center text-xs px-1 text-slate-500 font-medium pb-1">
+          <span>Total articles TTC :</span>
+          <span className="font-black text-slate-700 text-sm">{totalArticlesTTC.toFixed(2)} €</span>
+        </div>
+
         <form action={togglePaymentStatus}>
           <input type="hidden" name="quoteId" value={order.id} />
           <input type="hidden" name="isPaid" value={order.isPaid ? 'false' : 'true'} />
@@ -300,7 +307,7 @@ export function OrderCard({ order }: { order: Order }) {
           </button>
         </form>
 
-        <div className="flex gap-2 pt-3 border-t border-slate-100">
+        <div className="flex gap-2 pt-2">
           <button 
             onClick={handleDownloadPDF}
             className="flex-1 py-2.5 px-3 bg-slate-100 text-slate-700 hover:bg-slate-200 font-bold rounded-xl flex items-center justify-center gap-2 transition-all text-xs"
