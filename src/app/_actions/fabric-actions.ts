@@ -46,6 +46,7 @@ export async function createOrUpdateFabric(formData: FormData) {
         color, 
         width,
         supplierRef, // 🟢 ON L'AJOUTE ICI POUR LA MISE A JOUR
+        isArchived: false,
         stockMeters: unit === 'METER' ? totalStock : existingFabric.stockMeters,
         stockUnits: unit === 'UNIT' ? totalStock : existingFabric.stockUnits,
         pricePerMeter: unit === 'METER' ? averagePrice : existingFabric.pricePerMeter,
@@ -63,6 +64,7 @@ export async function createOrUpdateFabric(formData: FormData) {
         color, 
         unit,
         supplierRef, // 🟢 ON L'AJOUTE ICI POUR LA CRÉATION
+        isArchived: false,
         stockMeters: unit === 'METER' ? addedQty : 0,
         stockUnits: unit === 'UNIT' ? addedQty : 0,
         pricePerMeter: unit === 'METER' ? newPrice : 0,
@@ -228,6 +230,7 @@ export async function createOrUpdateAccessory(formData: FormData) {
         name,
         category,
         supplierRef, // 🟢 ON L'AJOUTE ICI POUR LA MISE A JOUR
+        isArchived: false,
         stockQuantity: totalStock,
         pricePerUnit: averagePrice,
         alertThreshold: alertThreshold
@@ -240,6 +243,7 @@ export async function createOrUpdateAccessory(formData: FormData) {
         name,
         category,
         supplierRef, // 🟢 ON L'AJOUTE ICI POUR LA CRÉATION
+        isArchived: false,
         stockQuantity: addedQty,
         pricePerUnit: newPrice,
         alertThreshold: alertThreshold,

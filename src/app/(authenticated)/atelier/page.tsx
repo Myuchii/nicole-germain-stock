@@ -132,6 +132,7 @@ export default async function AtelierPage({ searchParams }: AtelierPageProps) {
   const { view, type = 'all', groupBy = 'dimensions' } = await searchParams
 
   const availableFabrics = await prisma.fabric.findMany({
+    where: { isArchived: false },
     orderBy: { name: 'asc' }
   })
 
