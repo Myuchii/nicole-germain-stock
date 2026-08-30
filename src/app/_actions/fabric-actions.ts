@@ -311,7 +311,7 @@ export async function changeLotLocation(
   }
 }
 
-// 🟢 AJUSTEMENT EXCEPTIONNEL DE STOCK
+// 🟢 AJUSTEMENT EXCEPTIONNEL DE STOCK (CORRIGÉ AVEC GESTION DES LOTS)
 export async function adjustStockManually(formData: FormData) {
   const itemId = formData.get('itemId') as string
   const type = formData.get('itemType') as 'FABRIC' | 'ACCESSORY'
@@ -324,12 +324,33 @@ export async function adjustStockManually(formData: FormData) {
 
   try {
     await prisma.$transaction(async (tx) => {
+      let remainingToDeduct = quantity
+
       if (type === 'FABRIC') {
+        // 1. On déduit du total parent
         await tx.fabric.update({
           where: { id: itemId },
           data: { stockMeters: { decrement: quantity } }
         })
 
+        // 2. 🟢 On déduit des lots actifs (le plus vieux en premier)
+        const lots = await tx.fabricLot.findMany({
+          where: { fabricId: itemId, quantityLeft: { gt: 0 } },
+          orderBy: { createdAt: 'asc' }
+        })
+
+        for (const lot of lots) {
+          if (remainingToDeduct <= 0) break
+          const deduction = Math.min(lot.quantityLeft, remainingToDeduct)
+          
+          await tx.fabricLot.update({
+            where: { id: lot.id },
+            data: { quantityLeft: { decrement: deduction } }
+          })
+          remainingToDeduct -= deduction
+        }
+
+        // 3. On trace le mouvement
         await tx.stockMovement.create({
           data: {
             fabricId: itemId,
@@ -339,10 +360,27 @@ export async function adjustStockManually(formData: FormData) {
           }
         })
       } else {
+        // EXACTEMENT LA MÊME LOGIQUE POUR LES ACCESSOIRES
         await tx.accessory.update({
           where: { id: itemId },
           data: { stockQuantity: { decrement: quantity } }
         })
+
+        const lots = await tx.accessoryLot.findMany({
+          where: { accessoryId: itemId, quantityLeft: { gt: 0 } },
+          orderBy: { createdAt: 'asc' }
+        })
+
+        for (const lot of lots) {
+          if (remainingToDeduct <= 0) break
+          const deduction = Math.min(lot.quantityLeft, remainingToDeduct)
+          
+          await tx.accessoryLot.update({
+            where: { id: lot.id },
+            data: { quantityLeft: { decrement: deduction } }
+          })
+          remainingToDeduct -= deduction
+        }
       }
     })
 

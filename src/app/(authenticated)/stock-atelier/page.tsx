@@ -283,20 +283,26 @@ export default function StockPage() {
                         <div className="flex items-center justify-end gap-1">
                           {/* 🟢 BOUTON RETRAIT EXCEPTIONNEL (TISSUS) */}
                           <form action={async (formData) => {
-                            const qty = prompt(`Combien de ${f.unit === 'METER' ? 'mètres' : 'pièces'} veux-tu retirer du stock ?\n(Utilise un point pour les décimales, ex: 1.5)`)
-                            if (!qty) return
-                            
-                            const reason = prompt("Pour quelle raison ?\n(ex: Défaut tissu, test machine, jeté...)")
-                            if (!reason) return
-
-                            formData.append('quantity', qty)
-                            formData.append('reason', reason)
-                            formData.append('itemId', f.id)
-                            formData.append('itemType', 'FABRIC') 
-
-                            const res = await adjustStockManually(formData)
-                            if (!res?.success) alert(res?.error)
-                          }} className="inline-block">
+                              const rawQty = prompt(`Combien de ${f.unit === 'METER' ? 'mètres' : 'pièces'} veux-tu retirer du stock ?\n(Utilise un point pour les décimales, ex: 1.5)`)
+                              if (!rawQty) return
+                                                      
+                              const qty = rawQty.replace(',', '.') // 🟢 On transforme la virgule en point
+                                                      
+                              const reason = prompt("Pour quelle raison ?\n(ex: Défaut tissu, test machine, jeté...)")
+                              if (!reason) return
+                                                      
+                              formData.append('quantity', qty)
+                              formData.append('reason', reason)
+                              formData.append('itemId', f.id)
+                              formData.append('itemType', 'FABRIC') 
+                                                      
+                              const res = await adjustStockManually(formData)
+                              if (res?.success) {
+                                window.location.reload() // 🟢 On rafraîchit la page pour voir le nouveau stock !
+                              } else {
+                                alert(res?.error)
+                              }
+                            }} className="inline-block">
                             <button 
                               type="submit"
                               title="Retrait exceptionnel / Ajustement"
