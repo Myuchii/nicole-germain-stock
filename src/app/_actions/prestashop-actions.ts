@@ -114,7 +114,7 @@ export async function syncPrestashopOrders() {
     const data = JSON.parse(responseText)
     const rawOrders = data.orders || []
 
-    const targetStatuses = ['1','2', '3', '4', '5', '10','11', '12', '14']
+    const targetStatuses = ['1','2', '3', '4', '5', '10','11', '15', '19', '21']
     const psOrders = rawOrders.filter((order: any) => targetStatuses.includes(String(order.current_state)))
 
     let importedCount = 0
