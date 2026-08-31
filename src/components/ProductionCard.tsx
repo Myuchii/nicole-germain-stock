@@ -18,10 +18,8 @@ export default function ProductionCard({
 
   const isCooking = item.statusProduction === 'EN_COUTURE' && item.startedCoutureAt
   
-  // Si le quota est à 0, l'alerte de manque d'audits est désactivée
   const isQuotaMissing = auditQuota > 0 && currentTimedCount < auditQuota
 
-  // Effet de calcul en temps réel pour le tic-tac du chrono
   useEffect(() => {
     let interval: any = null
 
@@ -86,13 +84,16 @@ export default function ProductionCard({
     }
   }
 
+  // 🎯 DÉTECTION VISUELLE DU BICOLORE
+  const isBicolorAlert = item.customName?.includes('⚠️ MODÈLE BICOLORE')
+
   return (
-    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4 relative group">
+    <div className={`bg-white p-5 rounded-2xl shadow-sm border space-y-4 relative group ${isBicolorAlert ? 'border-amber-300 ring-2 ring-amber-500/10' : 'border-slate-100'}`}>
       
       {/* EN-TÊTE DE LA CARTE */}
       <div className="flex justify-between items-start gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {item.statusProduction === 'EN_COUTURE' && (
               <form onSubmit={handleRollbackSubmit} className="inline shrink-0">
                 <button 
@@ -105,27 +106,41 @@ export default function ProductionCard({
                 </button>
               </form>
             )}
-            <span className="text-xs font-mono text-indigo-600 font-bold bg-indigo-50/50 px-2 py-0.5 rounded-lg">
+            <span className="text-xs font-mono text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100">
               {item.quote.reference}
             </span>
+            {item.quote.client?.name && (
+              <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded uppercase truncate max-w-[120px]">
+                👤 {item.quote.client.name}
+              </span>
+            )}
           </div>
           
-          <h4 className="font-bold text-slate-900 text-sm mt-1.5 leading-tight break-words">
-            Matière : {item.fabric?.name || item.customName || 'Saisie libre'}
+          {/* 🟢 C'EST ICI LA CORRECTION : LE NOM DU PRODUIT EN PREMIER */}
+          <h4 className="font-black text-slate-900 text-sm mt-2 leading-snug break-words">
+            {item.customName || 'Article sur-mesure'}
           </h4>
+          
+          {/* ET LE TISSU EN ÉTIQUETTE */}
+          <div className="mt-2 flex flex-wrap gap-1">
+            <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-1 rounded-md border border-slate-200 inline-flex items-center gap-1">
+              🧵 Tissu A : {item.fabric?.name || 'Libre'}
+            </span>
+          </div>
         </div>
         
-        <div className="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-lg text-slate-600 font-bold text-xs shrink-0">
-          <Clock size={12} /> {item.prodTimeMinutes} min prévu
+        <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 font-bold text-[11px] shrink-0">
+          <Clock size={12} /> {item.prodTimeMinutes} min
         </div>
       </div>
 
       {/* RAPPEL TECHNIQUE */}
-      <div className="text-xs text-slate-500 bg-slate-50 p-2 rounded-xl">
-        Métrage validé : <strong>{Number(item.quantityMeters).toFixed(1)} m</strong> | Couture effectuée en : <strong>{tempsCoutureStr}</strong>
+      <div className="text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex justify-between items-center">
+        <span>Métrage validé : <strong className="text-slate-700">{Number(item.quantityMeters).toFixed(1)} m</strong></span>
+        <span>Couture : <strong className="text-slate-700">{tempsCoutureStr}</strong></span>
       </div>
 
-      {/* 📐 🟢 NOUVEAU : BLOC D'APERÇU MULTI-DOCUMENTS (CAMPING-CAR) */}
+      {/* 📐 BLOC D'APERÇU MULTI-DOCUMENTS (CAMPING-CAR) */}
       {item.blueprintUrl && (() => {
         try {
           const files = JSON.parse(item.blueprintUrl)
@@ -165,7 +180,6 @@ export default function ProductionCard({
             )
           }
         } catch (e) {
-          // Secours : Si ce n'est pas du JSON stringifié (ancienne commande), on garde l'affichage unique classique
           return (
             <div className="p-2.5 bg-red-50/50 border border-red-100 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <span className="inline-flex items-center gap-1 text-[10px] font-black text-red-700 uppercase">
@@ -204,7 +218,6 @@ export default function ProductionCard({
       <div>
         {item.statusProduction === 'EN_COUTURE' && (
           !item.startedCoutureAt ? (
-            /* Cas 1 : Le chrono n'a jamais démarré */
             auditQuota > 0 ? (
               <button 
                 onClick={handleStart}
@@ -227,7 +240,6 @@ export default function ProductionCard({
               </button>
             )
           ) : (
-            /* Cas 2 : Un chrono a déjà été initié ou est en cours */
             <div className="space-y-2">
               <button 
                 onClick={handleStop}
@@ -237,7 +249,6 @@ export default function ProductionCard({
                 Stop & Couture terminée
               </button>
 
-              {/* 🔄 LE BOUTON DE SECOURS : Pour écraser et relancer si besoin */}
               <button 
                 onClick={async () => {
                   if (confirm("⚠️ Tu vas réinitialiser et relancer le chronomètre à zéro pour cet ouvrage. Confirmer ?")) {
